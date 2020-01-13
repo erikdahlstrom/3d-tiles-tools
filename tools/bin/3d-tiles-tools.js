@@ -12,6 +12,8 @@ var directoryExists = require('../lib/directoryExists');
 var extractB3dm = require('../lib/extractB3dm');
 var extractCmpt = require('../lib/extractCmpt');
 var extractI3dm = require('../lib/extractI3dm');
+var printGlbInfo = require('../lib/printGlbInfo');
+var printTilesetInfo = require('../lib/printTilesetInfo');
 var fileExists = require('../lib/fileExists');
 var getBufferPadded = require('../lib/getBufferPadded');
 var getMagic = require('../lib/getMagic');
@@ -116,6 +118,7 @@ var argv = yargs
         }
     })
     .command('upgrade', 'Upgrades the input tileset to the latest version of the 3D Tiles spec. Embedded glTF models will be upgraded to glTF 2.0.')
+    .command('info', 'Prints information about a tileset or tile.')
     .demand(1)
     .recommendCommands()
     .strict()
@@ -169,6 +172,8 @@ function runCommand(command, input, output, force, argv) {
         return convertTilesetToDatabase(input, output, force);
     } else if (command === 'databaseToTileset') {
         return convertDatabaseToTileset(input, output, force);
+    } else if (command === 'info') {
+        return info(input, argv);
     }
     throw new DeveloperError('Invalid command: ' + command);
 }
@@ -347,6 +352,46 @@ function readI3dmWriteGlb(inputPath, outputPath, force) {
         .then(function(i3dm) {
             return fsExtra.outputFile(outputPath, extractI3dm(i3dm).glb);
         });
+}
+
+function info(inputPath, argv) {
+    var extension = path.extname(inputPath);
+    if (extension != '.json') {
+        return readFile(inputPath)
+            .then(function(content) {
+                if (extension === ".b3dm") {
+                    let b3dm = extractB3dm(content);
+                    console.log(b3dm);
+                    printGlbInfo(b3dm.glb);
+                    return;
+                } else if (extension === ".i3dm") {
+                    let i3dm = extractI3dm(content);
+                    console.log(i3dm);
+                    const itemSizeBytes = 3 * 4;
+                    for (let i = 0; i < i3dm.featureTable.json.INSTANCES_LENGTH; i++) {
+                        let offset = i3dm.featureTable.json.POSITION.byteOffset + i * itemSizeBytes;
+                        let x = i3dm.featureTable.binary.readFloatLE(offset);
+                        let y = i3dm.featureTable.binary.readFloatLE(offset + 4);
+                        let z = i3dm.featureTable.binary.readFloatLE(offset + 8);
+                        console.log(`Pos [${i}]: [${x}, ${y}, ${z}]`);
+                    }
+
+                    printGlbInfo(i3dm.glb);
+                    return;
+                } else if (extension === ".cmpt") {
+                    return extractCmpt(content);
+                }
+                else {
+                    return {};
+                }
+        });
+    }
+    else {
+        return readFile(inputPath, 'json')
+            .then((content) => {
+                return printTilesetInfo(content, inputPath);
+            });
+    }
 }
 
 function extractGlbs(tiles) {
