@@ -12,6 +12,7 @@ var directoryExists = require('../lib/directoryExists');
 var extractB3dm = require('../lib/extractB3dm');
 var extractCmpt = require('../lib/extractCmpt');
 var extractI3dm = require('../lib/extractI3dm');
+var extractPnts = require('../lib/extractPnts');
 var printGlbInfo = require('../lib/printGlbInfo');
 var printTilesetInfo = require('../lib/printTilesetInfo');
 var fileExists = require('../lib/fileExists');
@@ -367,16 +368,62 @@ function info(inputPath, argv) {
                 } else if (extension === ".i3dm") {
                     let i3dm = extractI3dm(content);
                     console.log(i3dm);
+                    
+                    if (i3dm.featureTable.json.RTC_CENTER) {
+                        console.log(`rtcCenter: ${i3dm.featureTable.json.RTC_CENTER}`);
+                    }
+
                     const itemSizeBytes = 3 * 4;
                     for (let i = 0; i < i3dm.featureTable.json.INSTANCES_LENGTH; i++) {
                         let offset = i3dm.featureTable.json.POSITION.byteOffset + i * itemSizeBytes;
                         let x = i3dm.featureTable.binary.readFloatLE(offset);
                         let y = i3dm.featureTable.binary.readFloatLE(offset + 4);
                         let z = i3dm.featureTable.binary.readFloatLE(offset + 8);
-                        console.log(`Pos [${i}]: [${x}, ${y}, ${z}]`);
+                        console.log(`[${i}] position: [${x}, ${y}, ${z}] (offset: ${offset})`);
+                    
+                        if (i3dm.featureTable.json.NORMAL_UP) {
+                            let offset = i3dm.featureTable.json.NORMAL_UP.byteOffset + i * itemSizeBytes;
+                            let x = i3dm.featureTable.binary.readFloatLE(offset);
+                            let y = i3dm.featureTable.binary.readFloatLE(offset + 4);
+                            let z = i3dm.featureTable.binary.readFloatLE(offset + 8);
+                            console.log(`[${i}] normal up: [${x}, ${y}, ${z}] (offset: ${offset})`);
+                        }
+
+                        if (i3dm.featureTable.json.NORMAL_RIGHT) {
+                            let offset = i3dm.featureTable.json.NORMAL_RIGHT.byteOffset + i * itemSizeBytes;
+                            let x = i3dm.featureTable.binary.readFloatLE(offset);
+                            let y = i3dm.featureTable.binary.readFloatLE(offset + 4);
+                            let z = i3dm.featureTable.binary.readFloatLE(offset + 8);
+                            console.log(`[${i}] normal right: [${x}, ${y}, ${z}] (offset: ${offset})`);
+                        }
                     }
 
                     printGlbInfo(i3dm.glb);
+                    return;
+                } else if (extension === ".pnts") {
+                    let pnts = extractPnts(content);
+                    console.log(pnts);
+
+                    if (pnts.featureTable.json.RTC_CENTER) {
+                        console.log(`rtcCenter: ${pnts.featureTable.json.RTC_CENTER}`);
+                    }
+
+                    const itemSizeBytes = 3 * 4;
+                    for (let i = 0; i < pnts.featureTable.json.POINTS_LENGTH; i++) {
+                        let offset = pnts.featureTable.json.POSITION.byteOffset + i * itemSizeBytes;
+                        let x = pnts.featureTable.binary.readFloatLE(offset);
+                        let y = pnts.featureTable.binary.readFloatLE(offset + 4);
+                        let z = pnts.featureTable.binary.readFloatLE(offset + 8);
+                        console.log(`[${i}] position: [${x}, ${y}, ${z}] (offset: ${offset})`);
+                        
+                        if (pnts.featureTable.json.RGB) {
+                            let offset = pnts.featureTable.json.RGB.byteOffset + i * 3;
+                            let r = pnts.featureTable.binary.readUInt8(offset);
+                            let g = pnts.featureTable.binary.readUInt8(offset + 1);
+                            let b = pnts.featureTable.binary.readUInt8(offset + 2);
+                            console.log(`[${i}] rgb: [${r}, ${g}, ${b}] (offset: ${offset})`);
+                        }
+                    }
                     return;
                 } else if (extension === ".cmpt") {
                     return extractCmpt(content);
