@@ -90,6 +90,7 @@ var argv = yargs
     .command('b3dmToGlb', 'Extract the binary glTF asset from the input b3dm.')
     .command('i3dmToGlb', 'Extract the binary glTF asset from the input i3dm.')
     .command('cmptToGlb', 'Extract the binary glTF assets from the input cmpt.')
+    .command('cmptToTiles', 'Split the input cmpt into multiple tiles.')
     .command('optimizeB3dm', 'Pass the input b3dm through gltf-pipeline. To pass options to gltf-pipeline, place them after --options. (--options -h for gltf-pipeline help)', {
         'options': {
             description: 'All arguments after this flag will be passed to gltf-pipeline as command line options.'
@@ -161,6 +162,8 @@ function runCommand(command, input, output, force, argv) {
         return readI3dmWriteGlb(input, output, force);
     } else if (command === 'cmptToGlb') {
         return readCmptWriteGlb(input, output, force);
+    } else if (command === 'cmptToTiles') {
+        return readCmptWriteTiles(input, output, force);
     } else if (command === 'glbToB3dm') {
         return readGlbWriteB3dm(input, output, force);
     } else if (command === 'glbToI3dm') {
@@ -522,6 +525,33 @@ function readCmptWriteGlb(inputPath, outputPath, force) {
             }).then(function() {
                 return Promise.map(glbPaths, function(glbPath, index) {
                     return fsExtra.outputFile(glbPath, glbs[index]);
+                });
+            });
+        });
+}
+
+function readCmptWriteTiles(inputPath, outputPath, force) {
+    outputPath = defaultValue(outputPath, inputPath).slice(0, inputPath.length - 5);
+    return readFile(inputPath)
+        .then(function(cmpt) {
+            var tiles = extractCmpt(cmpt);
+            var tilePaths = new Array(tiles.length);
+            if (tiles.length === 0) {
+                throw new DeveloperError('No tiles found in ' + inputPath + '.');
+            } else if (tiles.length === 1) {
+                var magic = getMagic(tiles[0]);
+                tilePaths[0] = outputPath + '.' + magic;
+            } else {
+                for (var i = 0; i < tiles.length; ++i) {
+                    var magic = getMagic(tiles[i]);
+                    tilePaths[i] = outputPath + '_' + i + '.' + magic;
+                }
+            }
+            return Promise.map(tilePaths, function(tilePath) {
+                return checkFileOverwritable(tilePath, force);
+            }).then(function() {
+                return Promise.map(tilePaths, function(tilePath, index) {
+                    return fsExtra.outputFile(tilePath, tiles[index]);
                 });
             });
         });
