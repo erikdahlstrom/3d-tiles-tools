@@ -13,7 +13,7 @@ module.exports = printGlbInfo;
  * @param {Buffer} glbBuffer A buffer containing a glb.
  * @returns {Object} An object containing the header and sections of the b3dm asset.
  */
-function printGlbInfo(glbBuffer) {
+function printGlbInfo(glbBuffer, prettify) {
   if (!defined(glbBuffer)) {
     throw new DeveloperError('glbBuffer is not defined.');
   }
@@ -39,8 +39,14 @@ function printGlbInfo(glbBuffer) {
   if (chunkType == 'JSON') {
     let offset = 20;
     let buffer = glbBuffer.slice(offset, offset + chunkLength);
-    console.log(buffer.toString());
-    return bufferToJson(buffer);
+    //console.log(buffer.toString());
+    let json = bufferToJson(buffer);
+    if (prettify) {
+      console.log(JSON.stringify(json, null, 2));
+    } else {
+      console.log(buffer.toString());
+    }
+    return json;
   }
 
   return;
