@@ -366,7 +366,7 @@ function info(inputPath, argv) {
                     printGlbInfo(b3dm.glb);
                     return;
                 } else if (extension === ".i3dm") {
-                    let i3dm = extractI3dm(content);
+                    let i3dm = extractI3dm(content, inputPath);
                     console.log(i3dm);
                     
                     if (i3dm.featureTable.json.RTC_CENTER) {
@@ -398,8 +398,10 @@ function info(inputPath, argv) {
                         }
                     }
 
-                    printGlbInfo(i3dm.glb);
-                    return;
+                    return i3dm.glb
+                        .then(function (glb) {
+                            printGlbInfo(glb);
+                        });
                 } else if (extension === ".pnts") {
                     let pnts = extractPnts(content);
                     console.log(pnts);
@@ -426,7 +428,49 @@ function info(inputPath, argv) {
                     }
                     return;
                 } else if (extension === ".cmpt") {
-                    return extractCmpt(content);
+                    let tiles = extractCmpt(content);
+                    let printI3DMTile = function (i3dm) {
+                        console.log(i3dm);
+
+                        if (i3dm.featureTable.json.RTC_CENTER) {
+                            console.log(`rtcCenter: ${i3dm.featureTable.json.RTC_CENTER}`);
+                        }
+
+                        const itemSizeBytes = 3 * 4;
+                        for (let i = 0; i < i3dm.featureTable.json.INSTANCES_LENGTH; i++) {
+                            let offset = i3dm.featureTable.json.POSITION.byteOffset + i * itemSizeBytes;
+                            let x = i3dm.featureTable.binary.readFloatLE(offset);
+                            let y = i3dm.featureTable.binary.readFloatLE(offset + 4);
+                            let z = i3dm.featureTable.binary.readFloatLE(offset + 8);
+                            console.log(`[${i}] position: [${x}, ${y}, ${z}] (offset: ${offset})`);
+
+                            if (i3dm.featureTable.json.NORMAL_UP) {
+                                let offset = i3dm.featureTable.json.NORMAL_UP.byteOffset + i * itemSizeBytes;
+                                let x = i3dm.featureTable.binary.readFloatLE(offset);
+                                let y = i3dm.featureTable.binary.readFloatLE(offset + 4);
+                                let z = i3dm.featureTable.binary.readFloatLE(offset + 8);
+                                console.log(`[${i}] normal up: [${x}, ${y}, ${z}] (offset: ${offset})`);
+                            }
+
+                            if (i3dm.featureTable.json.NORMAL_RIGHT) {
+                                let offset = i3dm.featureTable.json.NORMAL_RIGHT.byteOffset + i * itemSizeBytes;
+                                let x = i3dm.featureTable.binary.readFloatLE(offset);
+                                let y = i3dm.featureTable.binary.readFloatLE(offset + 4);
+                                let z = i3dm.featureTable.binary.readFloatLE(offset + 8);
+                                console.log(`[${i}] normal right: [${x}, ${y}, ${z}] (offset: ${offset})`);
+                            }
+                        }
+
+                        return i3dm.glb
+                            .then(function (glb) {
+                                printGlbInfo(glb);
+                            });
+                    };
+                    for (let i = 0; i < tiles.length; i++) {
+                        console.log(`Cmpt ${i + 1} of ${tiles.length}:`);
+                        let i3dm = extractI3dm(tiles[i], inputPath);
+                        printI3DMTile(i3dm);
+                    }
                 }
                 else {
                     return {};

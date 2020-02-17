@@ -3,6 +3,8 @@
 var Cesium = require('cesium');
 var bufferToJson = require('./bufferToJson');
 var getMagic = require('./getMagic');
+var fsExtra = require('fs-extra');
+var path = require('path');
 
 var defined = Cesium.defined;
 var DeveloperError = Cesium.DeveloperError;
@@ -15,7 +17,7 @@ module.exports = extractI3dm;
  * @param {Buffer} buffer A buffer containing an i3dm asset.
  * @returns {Object} An object containing the header and sections of the i3dm asset.
  */
-function extractI3dm(buffer) {
+function extractI3dm(buffer, inputPath) {
     if (!defined(buffer)) {
         throw new DeveloperError('buffer is not defined.');
     }
@@ -35,10 +37,6 @@ function extractI3dm(buffer) {
     var batchTableBinaryByteLength = buffer.readUInt32LE(24);
     var gltfFormat = buffer.readUInt32LE(28);
 
-    if (gltfFormat !== 1) {
-        throw new DeveloperError('Only embedded binary glTF is supported.');
-    }
-
     var headerByteLength = 32;
     var featureTableJsonByteOffset = headerByteLength;
     var featureTableBinaryByteOffset = featureTableJsonByteOffset + featureTableJsonByteLength;
@@ -56,7 +54,20 @@ function extractI3dm(buffer) {
     var batchTableJsonBuffer = buffer.slice(batchTableJsonByteOffset, batchTableBinaryByteOffset);
     var batchTableBinaryBuffer = buffer.slice(batchTableBinaryByteOffset, gltfByteOffset);
     var glbBuffer = buffer.slice(gltfByteOffset, byteLength);
-    glbBuffer = alignGlb(glbBuffer, gltfByteOffset);
+
+    if (gltfFormat === 0) {
+        let glbPath = glbBuffer.toString();
+        let basePath = "";
+        if (defined(inputPath)) {
+            basePath = path.dirname(inputPath);
+        }
+        let fullPath = path.join(basePath, glbPath);
+        glbBuffer = fsExtra.readFile(fullPath)
+            .then(function (fileBuffer) { return fileBuffer; });
+    }
+    else {
+        glbBuffer = alignGlb(glbBuffer, gltfByteOffset);
+    }
 
     var featureTableJson = bufferToJson(featureTableJsonBuffer);
     var batchTableJson = bufferToJson(batchTableJsonBuffer);
