@@ -120,7 +120,14 @@ var argv = yargs
         }
     })
     .command('upgrade', 'Upgrades the input tileset to the latest version of the 3D Tiles spec. Embedded glTF models will be upgraded to glTF 2.0.')
-    .command('info', 'Prints information about a tileset or tile.')
+    .command('info', 'Prints information about a tileset or tile.', {
+        'p': {
+            alias: 'pretty',
+            default: false,
+            description: 'Pretty-print glTF json part.',
+            type: 'boolean'
+        }
+    })
     .demand(1)
     .recommendCommands()
     .strict()
@@ -366,7 +373,7 @@ function info(inputPath, argv) {
                 if (extension === ".b3dm") {
                     let b3dm = extractB3dm(content);
                     console.log(b3dm);
-                    printGlbInfo(b3dm.glb);
+                    printGlbInfo(b3dm.glb, argv.pretty);
                     return;
                 } else if (extension === ".i3dm") {
                     let i3dm = extractI3dm(content, inputPath);
@@ -403,7 +410,7 @@ function info(inputPath, argv) {
 
                     return i3dm.glb
                         .then(function (glb) {
-                            printGlbInfo(glb);
+                            printGlbInfo(glb, argv.pretty);
                         });
                 } else if (extension === ".pnts") {
                     let pnts = extractPnts(content);
@@ -466,7 +473,7 @@ function info(inputPath, argv) {
 
                         return i3dm.glb
                             .then(function (glb) {
-                                printGlbInfo(glb);
+                                printGlbInfo(glb, argv.pretty);
                             });
                     };
                     for (let i = 0; i < tiles.length; i++) {
