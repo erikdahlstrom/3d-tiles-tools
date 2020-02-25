@@ -89,7 +89,14 @@ var argv = yargs
     .command('tilesetToDatabase', 'Create a sqlite database for a tileset.')
     .command('databaseToTileset', 'Unpack a tileset database to a tileset folder.')
     .command('glbToB3dm', 'Repackage the input glb as a b3dm with a basic header.')
-    .command('glbToI3dm', 'Repackage the input glb as a i3dm with a basic header.')
+    .command('glbToI3dm', 'Repackage the input glb as a i3dm with a basic header.', {
+        'c': {
+            alias: 'copyHeaderFromI3dm',
+            description: 'Copy header information from this i3dm file',
+            normalize: true,
+            type: 'string'
+        }
+    })
     .command('b3dmToGlb', 'Extract the binary glTF asset from the input b3dm.')
     .command('i3dmToGlb', 'Extract the binary glTF asset from the input i3dm.')
     .command('cmptToGlb', 'Extract the binary glTF assets from the input cmpt.')
@@ -341,8 +348,24 @@ function readGlbWriteB3dm(inputPath, outputPath, force) {
 function readGlbWriteI3dm(inputPath, outputPath, force) {
     outputPath = defaultValue(outputPath, inputPath.slice(0, inputPath.length - 3) + 'i3dm');
     return checkFileOverwritable(outputPath, force)
-        .then(function() {
-            return readFile(inputPath)
+        .then(function () {
+            if (defined(argv.copyHeaderFromI3dm)) {
+                return readFile(argv.copyHeaderFromI3dm)
+                    .then(function (buf) {
+                        return extractI3dm(buf, argv.copyHeaderFromI3dm);
+                    })
+                    .then(function (i3dm) {
+                        let glbPath = Buffer.from(inputPath);
+                        return fsExtra.outputFile(outputPath, glbToI3dm(glbPath, true,
+                            i3dm.featureTable.json,
+                            i3dm.featureTable.binary,
+                            i3dm.batchTable.json,
+                            i3dm.batchTable.binary
+                        ));
+                    });
+            }
+            else {
+                return readFile(inputPath)
                 .then(function(glb) {
                     // Set i3dm spec requirements
                     var featureTable = {
@@ -354,8 +377,9 @@ function readGlbWriteI3dm(inputPath, outputPath, force) {
                     var featureTableJsonBuffer = getJsonBufferPadded(featureTable);
                     var featureTableBinaryBuffer = getBufferPadded(Buffer.alloc(12, 0)); // [0, 0, 0]
 
-                    return fsExtra.outputFile(outputPath, glbToI3dm(glb, featureTableJsonBuffer, featureTableBinaryBuffer));
+                    return fsExtra.outputFile(outputPath, glbToI3dm(glb, false, featureTableJsonBuffer, featureTableBinaryBuffer));
                 });
+            }
         });
 }
 

@@ -12,13 +12,14 @@ module.exports = glbToI3dm;
  * Generates a new Buffer representing a i3dm asset.
  *
  * @param {Buffer} glbBuffer A buffer containing a binary glTF asset.
+ * @param {Boolean} glbBufferContainsPath If glbBuffer contains a path to a glb, use the path when encoding.
  * @param {Object} [featureTableJson] The feature table JSON.
  * @param {Buffer} [featureTableBinary] The feature table binary.
  * @param {Object} [batchTableJson] The batch table JSON.
  * @param {Buffer} [batchTableBinary] The batch table binary.
  * @returns {Buffer} Buffer representing the i3dm asset.
  */
-function glbToI3dm(glbBuffer, featureTableJson, featureTableBinary, batchTableJson, batchTableBinary) {
+function glbToI3dm(glbBuffer, glbBufferContainsPath, featureTableJson, featureTableBinary, batchTableJson, batchTableBinary) {
     if (!defined(glbBuffer)) {
         throw new DeveloperError('glbBuffer is not defined.');
     }
@@ -30,7 +31,7 @@ function glbToI3dm(glbBuffer, featureTableJson, featureTableBinary, batchTableJs
 
     var headerByteLength = 32;
     var byteLength = headerByteLength + featureTableJsonBuffer.length + featureTableBinaryBuffer.length + batchTableJsonBuffer.length + batchTableBinaryBuffer.length + glbBuffer.length;
-    var gltfFormat = 1;
+    var gltfFormat = glbBufferContainsPath ? 0 : 1;
 
     var header = Buffer.alloc(32);
     header.write('i3dm', 0);                                    // magic
