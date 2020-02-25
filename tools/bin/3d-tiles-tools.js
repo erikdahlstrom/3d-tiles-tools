@@ -15,6 +15,8 @@ var extractI3dm = require('../lib/extractI3dm');
 var extractPnts = require('../lib/extractPnts');
 var printGlbInfo = require('../lib/printGlbInfo');
 var printTilesetInfo = require('../lib/printTilesetInfo');
+var printI3dmInfo = require('../lib/printI3dmInfo');
+var printPntsInfo = require('../lib/printPntsInfo');
 var fileExists = require('../lib/fileExists');
 var getBufferPadded = require('../lib/getBufferPadded');
 var getMagic = require('../lib/getMagic');
@@ -25,6 +27,7 @@ var isGzipped = require('../lib/isGzipped');
 var optimizeGlb = require('../lib/optimizeGlb');
 var runPipeline = require('../lib/runPipeline');
 var tilesetToDatabase = require('../lib/tilesetToDatabase');
+const StreamZip = require('node-stream-zip');
 
 var zlibGunzip = Promise.promisify(zlib.gunzip);
 var zlibGzip = Promise.promisify(zlib.gzip);
@@ -125,6 +128,19 @@ var argv = yargs
             alias: 'pretty',
             default: false,
             description: 'Pretty-print glTF json part.',
+            type: 'boolean'
+        },
+        's': {
+            alias: 'archiveInternalPath',
+            default: 'tileset.json',
+            description: 'Path inside the zip archive',
+            normalize: true,
+            type: 'string'
+        },
+        'l': {
+            alias: 'listArchive',
+            default: false,
+            description: 'List files in zip archive',
             type: 'boolean'
         }
     })
@@ -365,134 +381,79 @@ function readI3dmWriteGlb(inputPath, outputPath, force) {
         });
 }
 
+function zipReader(stream) {
+    var bufs = [];
+    stream.on('data', function (d) { bufs.push(d); });
+    stream.on('end', function () {
+        var buf = Buffer.concat(bufs);
+        return Promise.resolve(buf);
+    });
+    stream.on('error', (err) => {
+        return Promise.reject(err);
+    });
+}
+
+function printInfoSync(zip, zipFilePath, content, innerPath, argv)
+{
+    let extension = path.extname(innerPath);
+    if (extension == '.json') {
+        return printTilesetInfo(content, innerPath, zip, zipFilePath);
+    } else if (extension == '.b3dm') {
+        let b3dm = extractB3dm(content);
+        console.log(b3dm);
+        return printGlbInfo(b3dm.glb, argv.pretty);
+    } else if (extension == '.i3dm') {
+        let i3dm = extractI3dm(content, innerPath);
+        return printI3dmInfo(i3dm, argv);
+    } else if (extension === ".pnts") {
+        let pnts = extractPnts(content);
+        return printPntsInfo(pnts);
+    } else if (extension == '.cmpt') {
+        let tiles = extractCmpt(content);
+        for (let i = 0; i < tiles.length; i++) {
+            console.log(`Cmpt ${i + 1} of ${tiles.length}:`);
+            let i3dm = extractI3dm(tiles[i], innerPath);
+            printI3dmInfo(i3dm, argv);
+        }
+        return;
+    } else {
+        console.warn(`Warning: unhandled file type: ${innerPath}`);
+        console.log(content.toString());
+    }
+}
+
 function info(inputPath, argv) {
-    var extension = path.extname(inputPath);
-    if (extension != '.json') {
-        return readFile(inputPath)
-            .then(function(content) {
-                if (extension === ".b3dm") {
-                    let b3dm = extractB3dm(content);
-                    console.log(b3dm);
-                    printGlbInfo(b3dm.glb, argv.pretty);
-                    return;
-                } else if (extension === ".i3dm") {
-                    let i3dm = extractI3dm(content, inputPath);
-                    console.log(i3dm);
-                    
-                    if (i3dm.featureTable.json.RTC_CENTER) {
-                        console.log(`rtcCenter: ${i3dm.featureTable.json.RTC_CENTER}`);
-                    }
-
-                    const itemSizeBytes = 3 * 4;
-                    for (let i = 0; i < i3dm.featureTable.json.INSTANCES_LENGTH; i++) {
-                        let offset = i3dm.featureTable.json.POSITION.byteOffset + i * itemSizeBytes;
-                        let x = i3dm.featureTable.binary.readFloatLE(offset);
-                        let y = i3dm.featureTable.binary.readFloatLE(offset + 4);
-                        let z = i3dm.featureTable.binary.readFloatLE(offset + 8);
-                        console.log(`[${i}] position: [${x}, ${y}, ${z}] (offset: ${offset})`);
-                    
-                        if (i3dm.featureTable.json.NORMAL_UP) {
-                            let offset = i3dm.featureTable.json.NORMAL_UP.byteOffset + i * itemSizeBytes;
-                            let x = i3dm.featureTable.binary.readFloatLE(offset);
-                            let y = i3dm.featureTable.binary.readFloatLE(offset + 4);
-                            let z = i3dm.featureTable.binary.readFloatLE(offset + 8);
-                            console.log(`[${i}] normal up: [${x}, ${y}, ${z}] (offset: ${offset})`);
-                        }
-
-                        if (i3dm.featureTable.json.NORMAL_RIGHT) {
-                            let offset = i3dm.featureTable.json.NORMAL_RIGHT.byteOffset + i * itemSizeBytes;
-                            let x = i3dm.featureTable.binary.readFloatLE(offset);
-                            let y = i3dm.featureTable.binary.readFloatLE(offset + 4);
-                            let z = i3dm.featureTable.binary.readFloatLE(offset + 8);
-                            console.log(`[${i}] normal right: [${x}, ${y}, ${z}] (offset: ${offset})`);
-                        }
-                    }
-
-                    return i3dm.glb
-                        .then(function (glb) {
-                            printGlbInfo(glb, argv.pretty);
-                        });
-                } else if (extension === ".pnts") {
-                    let pnts = extractPnts(content);
-                    console.log(pnts);
-
-                    if (pnts.featureTable.json.RTC_CENTER) {
-                        console.log(`rtcCenter: ${pnts.featureTable.json.RTC_CENTER}`);
-                    }
-
-                    const itemSizeBytes = 3 * 4;
-                    for (let i = 0; i < pnts.featureTable.json.POINTS_LENGTH; i++) {
-                        let offset = pnts.featureTable.json.POSITION.byteOffset + i * itemSizeBytes;
-                        let x = pnts.featureTable.binary.readFloatLE(offset);
-                        let y = pnts.featureTable.binary.readFloatLE(offset + 4);
-                        let z = pnts.featureTable.binary.readFloatLE(offset + 8);
-                        console.log(`[${i}] position: [${x}, ${y}, ${z}] (offset: ${offset})`);
-                        
-                        if (pnts.featureTable.json.RGB) {
-                            let offset = pnts.featureTable.json.RGB.byteOffset + i * 3;
-                            let r = pnts.featureTable.binary.readUInt8(offset);
-                            let g = pnts.featureTable.binary.readUInt8(offset + 1);
-                            let b = pnts.featureTable.binary.readUInt8(offset + 2);
-                            console.log(`[${i}] rgb: [${r}, ${g}, ${b}] (offset: ${offset})`);
-                        }
-                    }
-                    return;
-                } else if (extension === ".cmpt") {
-                    let tiles = extractCmpt(content);
-                    let printI3DMTile = function (i3dm) {
-                        console.log(i3dm);
-
-                        if (i3dm.featureTable.json.RTC_CENTER) {
-                            console.log(`rtcCenter: ${i3dm.featureTable.json.RTC_CENTER}`);
-                        }
-
-                        const itemSizeBytes = 3 * 4;
-                        for (let i = 0; i < i3dm.featureTable.json.INSTANCES_LENGTH; i++) {
-                            let offset = i3dm.featureTable.json.POSITION.byteOffset + i * itemSizeBytes;
-                            let x = i3dm.featureTable.binary.readFloatLE(offset);
-                            let y = i3dm.featureTable.binary.readFloatLE(offset + 4);
-                            let z = i3dm.featureTable.binary.readFloatLE(offset + 8);
-                            console.log(`[${i}] position: [${x}, ${y}, ${z}] (offset: ${offset})`);
-
-                            if (i3dm.featureTable.json.NORMAL_UP) {
-                                let offset = i3dm.featureTable.json.NORMAL_UP.byteOffset + i * itemSizeBytes;
-                                let x = i3dm.featureTable.binary.readFloatLE(offset);
-                                let y = i3dm.featureTable.binary.readFloatLE(offset + 4);
-                                let z = i3dm.featureTable.binary.readFloatLE(offset + 8);
-                                console.log(`[${i}] normal up: [${x}, ${y}, ${z}] (offset: ${offset})`);
-                            }
-
-                            if (i3dm.featureTable.json.NORMAL_RIGHT) {
-                                let offset = i3dm.featureTable.json.NORMAL_RIGHT.byteOffset + i * itemSizeBytes;
-                                let x = i3dm.featureTable.binary.readFloatLE(offset);
-                                let y = i3dm.featureTable.binary.readFloatLE(offset + 4);
-                                let z = i3dm.featureTable.binary.readFloatLE(offset + 8);
-                                console.log(`[${i}] normal right: [${x}, ${y}, ${z}] (offset: ${offset})`);
-                            }
-                        }
-
-                        return i3dm.glb
-                            .then(function (glb) {
-                                printGlbInfo(glb, argv.pretty);
-                            });
-                    };
-                    for (let i = 0; i < tiles.length; i++) {
-                        console.log(`Cmpt ${i + 1} of ${tiles.length}:`);
-                        let i3dm = extractI3dm(tiles[i], inputPath);
-                        printI3DMTile(i3dm);
-                    }
-                }
-                else {
-                    return {};
-                }
+    let extension = path.extname(inputPath);
+    let inputFile = inputPath;
+    if (extension == '.zip') {
+        let zip = new StreamZip({
+            file: inputPath,
+            storeEntries: true
         });
+        let innerPath = argv.archiveInternalPath;
+        zip.on('error', (err) => {
+            console.log(`Error: ${err}`);
+        })
+        zip.on('ready', () => {
+            if (argv.listArchive) {
+                console.log(`Archive contains ${zip.entriesCount} entries.`);
+                for (const entry of Object.values(zip.entries())) {
+                    const desc = entry.isDirectory ? 'directory' : `${entry.size} bytes`;
+                    console.log(`${entry.name}: ${desc}`);
+                }
+            } else {
+                let contents = zip.entryDataSync(innerPath);
+                printInfoSync(zip, inputPath, contents, innerPath, argv);
+            }
+            zip.close();
+        });
+        return Promise.resolve();
     }
-    else {
-        return readFile(inputPath, 'json')
-            .then((content) => {
-                return printTilesetInfo(content, inputPath);
+    else
+        return readFile(inputFile)
+            .then(content => {
+                printInfoSync(undefined, undefined, content, inputFile, argv);
             });
-    }
 }
 
 function extractGlbs(tiles) {

@@ -20,17 +20,21 @@ module.exports = printTilesetInfo;
  *
  * @param {Buffer} content The file contents
  * @param {String} inputPath The tileset.json file path
+ * @param {StreamZip} zip The zip containing the tileset
+ * @param {String} zipFilePath The path to the zip archive
  *
  * @returns {Promise} A promise that resolves when the operation completes.
  */
-function printTilesetInfo(content, inputPath) {
-  //console.log(`Gathering information about ${inputPath}`);
+function printTilesetInfo(content, inputPath, zip, zipFilePath) {
+  console.log(`Gathering information about ${defined(zipFilePath) ? zipFilePath + ' : ' : ''}${inputPath}`);
 
   var tileset = bufferToJson(content);
 
+  //console.log(tileset);
+
   var root = tileset.root;
   
-  return gatherTileInfo(root, inputPath, true)
+  return gatherTileInfo(root, inputPath, zip, zipFilePath, true)
     .then(infos => {
       console.log(infos);
       if (Array.isArray(infos)) {
@@ -50,7 +54,7 @@ function printTilesetInfo(content, inputPath) {
     });
 }
 
-function gatherTileInfo(root, filePath, recurse) {
+function gatherTileInfo(root, filePath, zip, zipFilePath, recurse) {
   var info = {
     "path": filePath,
     "json": [],
@@ -74,13 +78,23 @@ function gatherTileInfo(root, filePath, recurse) {
       if (recurse) {
         if (type == "json") {
           let subfilePath = path.join(path.dirname(filePath), tile.content.uri);
-          //console.log(`Gathering info for ${subfilePath}`);
-          promises.push(fsExtra.readFile(subfilePath)
-            .then(function (content) {
-              let tileset = bufferToJson(content);
-              return gatherTileInfo(tileset.root, subfilePath, recurse)
-                .then(res => res);
-            }));
+          console.log(`Gathering info for ${subfilePath}`);
+          if (defined(zip)) {
+            let content = zip.entryDataSync(subfilePath);
+            let tileset = bufferToJson(content);
+            let result = gatherTileInfo(tileset.root, subfilePath, zip, zipFilePath, recurse);
+            //console.log(result);
+            console.log(typeof result);
+            promises.push(result);
+          } else {
+            promises.push(
+              fsExtra.readFile(subfilePath)
+              .then(function (content) {
+                let tileset = bufferToJson(content);
+                return gatherTileInfo(tileset.root, subfilePath, recurse)
+                  .then(res => res);
+              }));
+          }
         }
       }
 

@@ -62,8 +62,7 @@ function extractI3dm(buffer, inputPath) {
             basePath = path.dirname(inputPath);
         }
         let fullPath = path.join(basePath, glbPath);
-        glbBuffer = fsExtra.readFile(fullPath)
-            .then(function (fileBuffer) { return fileBuffer; });
+        glbBuffer = fullPath;
     }
     else {
         glbBuffer = alignGlb(glbBuffer, gltfByteOffset);

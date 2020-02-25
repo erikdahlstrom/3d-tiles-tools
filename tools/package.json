@@ -27,6 +27,7 @@
     "fs-extra": "^7.0.1",
     "gltf-pipeline": "^2.1.4",
     "klaw": "^3.0.0",
+    "node-stream-zip": "^1.9.1",
     "sqlite3": "^4.0.6",
     "uuid": "^3.3.2",
     "yargs": "^13.2.2"
