@@ -129,7 +129,7 @@ function validateB3dm(content, filePath, argv, archive, archivePath) {
     }
 
     if (argv.validateGlb) {
-    var glbMessage = validateGlb(glbBuffer, filePath + ".glb", archive, archivePath);
+        var glbMessage = validateGlb(glbBuffer, filePath + ".glb", archive, archivePath);
         if (defined(glbMessage)) {
             return glbMessage;
         }

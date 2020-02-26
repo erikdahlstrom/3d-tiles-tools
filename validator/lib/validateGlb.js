@@ -13,7 +13,7 @@ var defined = Cesium.defined;
  * @param {Buffer} glb The glb buffer.
  * @returns {String} An error message if validation fails, otherwise undefined.
  */
-function validateGlb(glb, filePath, archive, archivePath) {
+async function validateGlb(glb, filePath, archive, archivePath) {
     var version = glb.readUInt32LE(4);
 
     if (version !== 2) {
@@ -24,8 +24,8 @@ function validateGlb(glb, filePath, archive, archivePath) {
         uri: filePath,
         externalResourceFunction: (uri) =>
             new Promise((resolve, reject) => {
-                uri = path.resolve(path.dirname(filePath), decodeURIComponent(uri));
-                console.info("Loading external file: " + uri);
+                uri = path.join(path.dirname(filePath), decodeURIComponent(uri));
+                console.debug(`Loading external file: ${archivePath ? archivePath + " : " : ""}${uri}`);
                 if (defined(archive)) {
                     let buffer = archive.entryDataSync(uri);
                     resolve(buffer);
