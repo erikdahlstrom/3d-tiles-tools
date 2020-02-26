@@ -3,10 +3,10 @@ var Promise = require('bluebird');
 var Cesium = require('cesium');
 var path = require('path');
 var isTile = require('../lib/isTile');
-var readTile = require('../lib/readTile');
-var readTileset = require('../lib/readTileset');
+var readTileFromArchive = require('../lib/readTileFromArchive');
+var readTilesetFromArchive = require('../lib/readTilesetFromArchive');
 var utility = require('../lib/utility');
-var validateTile = require('../lib/validateTile');
+var validateTileFromArchive = require('../lib/validateTileFromArchive');
 
 var regionInsideRegion = utility.regionInsideRegion;
 var sphereInsideSphere = utility.sphereInsideSphere;
@@ -18,7 +18,7 @@ var Matrix3 = Cesium.Matrix3;
 var sphereInsideBox = utility.sphereInsideBox;
 var defined = Cesium.defined;
 
-module.exports = validateTileset;
+module.exports = validateTilesetFromArchive;
 
 /**
  * Check if a tileset is valid, including the tileset JSON and all tiles referenced within.
@@ -27,12 +27,13 @@ module.exports = validateTileset;
  * @param {String} tilesetDirectory The directory that all paths in the tileset JSON are relative to.
  * @return {Promise} A promise that resolves when the validation completes. If the validation fails, the promise will resolve to an error message.
  */
-function validateTileset(tileset, filePath, tilesetDirectory, argv) {
+function validateTilesetFromArchive(tileset, filePath, tilesetDirectory, argv, archive, archivePath) {
+    console.log(`Validating tileset ${archivePath} : ${filePath}`);
     var message = validateTopLevel(tileset);
     if (defined(message)) {
         return Promise.resolve(message);
     }
-    return Promise.resolve(validateTileHierarchy(tileset.root, filePath, tilesetDirectory, argv));
+    return Promise.resolve(validateTileHierarchyFromArchive(tileset.root, filePath, tilesetDirectory, argv, archive, archivePath));
 }
 
 function validateTopLevel(tileset) {
@@ -64,7 +65,7 @@ function validateTopLevel(tileset) {
     }
 }
 
-function validateTileHierarchy(root, filePath, tilesetDirectory, argv) {
+function validateTileHierarchyFromArchive(root, filePath, tilesetDirectory, argv, archive, archivePath) {
     var contentPaths = [];
 
     var stack = [];
@@ -154,41 +155,41 @@ function validateTileHierarchy(root, filePath, tilesetDirectory, argv) {
             console.log(`[${filePath}] ${100 * completed / numContentPaths}% done`);
         }
     };
-    console.log(`Validating ${filePath} - ${numContentPaths} sub tiles`);
-    return Promise.map(contentPaths, function (contentPath) {
-        //console.log("Validating " + contentPath);
+  //console.log(`Validating ${archivePath} : ${filePath} - ${numContentPaths} sub tiles`);
+  return Promise.map(contentPaths, function (contentPath) {
+        //console.log(`Validating ${archivePath} : ${contentPath}`);
         if (isTile(contentPath)) {
-            return readTile(contentPath)
+            return readTileFromArchive(archive, contentPath)
                 .then(function (content) {
-                    return validateTile(content, contentPath, argv);
+                    return validateTileFromArchive(content, contentPath, argv, archive, archivePath);
                 })
                 .catch(function (error) {
                     return 'Could not read file: ' + error.message;
                 })
                 .finally(reportProgress);
         }
-        return readTileset(contentPath)
+        return readTilesetFromArchive(archive, contentPath)
             .then(function(tileset) {
-                return validateTileset(tileset, contentPath, path.dirname(contentPath), argv);
+                return validateTilesetFromArchive(tileset, contentPath, path.dirname(contentPath), argv, archive, archivePath);
             })
             .catch(function(error) {
                 return 'Could not read file: ' + error.message;
             })
             .finally(reportProgress);
     })
-        .then(function(messages) {
-            var message = '';
-            var length = messages.length;
-            for (var i = 0; i < length; ++i) {
-                if (defined(messages[i])) {
-                    message += 'Error in ' + contentPaths[i] + ': ' + messages[i] + '\n';
-                }
-            }
-            if (message === '') {
-                return undefined;
-            }
-            return message;
-        });
+      .then(function (messages) {
+          var message = '';
+          var length = messages.length;
+          for (var i = 0; i < length; ++i) {
+              if (defined(messages[i])) {
+                  message += 'Error in ' + contentPaths[i] + ': ' + messages[i] + '\n';
+              }
+          }
+          if (message === '') {
+              return undefined;
+          }
+          return message;
+      });
 }
 
 function checkBoundingVolume(innerBoundingVolume, outerBoundingVolume, innerTransform, outerTransform) {

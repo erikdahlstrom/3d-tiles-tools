@@ -14,7 +14,7 @@ module.exports = validateCmpt;
  * @param {Buffer} content A buffer containing the contents of a cmpt tile.
  * @returns {String} An error message if validation fails, otherwise undefined.
  */
-function validateCmpt(content, filePath) {
+function validateCmpt(content, filePath, argv, archive, archivePath) {
     var headerByteLength = 16;
     if (content.length < headerByteLength) {
         return 'Header must be 16 bytes.';
@@ -52,13 +52,13 @@ function validateCmpt(content, filePath) {
 
         var message;
         if (innerTileMagic === 'b3dm') {
-            message = validateB3dm(innerTile);
+            message = validateB3dm(innerTile, filePath, argv, archive, archivePath);
         } else if (innerTileMagic === 'i3dm') {
-            message = validateI3dm(innerTile);
+            message = validateI3dm(innerTile, filePath, argv, archive, archivePath);
         } else if (innerTileMagic === 'pnts') {
-            message = validatePnts(innerTile);
+            message = validatePnts(innerTile, filePath, argv, archive, archivePath);
         } else if (innerTileMagic === 'cmpt') {
-            message = validateCmpt(innerTile);
+            message = validateCmpt(innerTile, filePath, argv, archive, archivePath);
         } else {
             return 'Invalid inner tile magic: ' + innerTileMagic;
         }

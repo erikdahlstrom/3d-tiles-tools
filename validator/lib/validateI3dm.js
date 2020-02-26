@@ -5,6 +5,8 @@ var utility = require('../lib/utility');
 var validateBatchTable = require('../lib/validateBatchTable');
 var validateFeatureTable = require('../lib/validateFeatureTable');
 var validateGlb = require('../lib/validateGlb');
+var fsExtra = require('fs-extra');
+var path = require('path');
 
 var batchTableSchema = require('../specs/data/schema/batchTable.schema.json');
 var featureTableSchema = require('../specs/data/schema/featureTable.schema.json');
@@ -94,7 +96,7 @@ var featureTableSemantics = {
  * @param {Buffer} content A buffer containing the contents of an i3dm tile.
  * @returns {String} An error message if validation fails, otherwise undefined.
  */
-function validateI3dm(content, filePath) {
+function validateI3dm(content, filePath, argv, archive, archivePath) {
     var headerByteLength = 32;
     if (content.length < headerByteLength) {
         return 'Header must be 32 bytes.';
@@ -210,13 +212,25 @@ function validateI3dm(content, filePath) {
     }
 
     if (embeddedGlb) {
-        var glbMessage = validateGlb(glbBuffer);
-        if (defined(glbMessage)) {
-            return glbMessage;
+        if (argv.validateGlb) {
+            var glbMessage = validateGlb(glbBuffer, filePath, archive, archivePath);
+            if (defined(glbMessage)) {
+                return glbMessage;
+            }
+        } else {
+            console.debug(`Skipped validation of embedded Glb in tile ${filePath}`);
         }
     } else {
         if (!isBufferValidUtf8(glbBuffer)) {
             return 'Gltf url is not a valid utf-8 string';
+        }
+
+        let glbPath = path.join(path.dirname(filePath), glbBuffer.toString());
+        if (fsExtra.statSync(glbPath).isFile() && argv.validateGlb) {
+            let buffer = fsExtra.readFileSync(glbPath);
+            return validateGlb(buffer, glbPath, archive, archivePath);
+        } else {
+            console.debug(`Skipped validation of external Glb in tile ${filePath}`);
         }
     }
 }

@@ -1,10 +1,11 @@
 'use strict';
-
+var Cesium = require('cesium');
 module.exports = validateGlb;
 const path = require('path');
 const os = require('os');
 const fs = require('fs');
 const validator = require('gltf-validator');
+var defined = Cesium.defined;
 
 /**
  * Check if the glb is valid binary glTF.
@@ -12,7 +13,7 @@ const validator = require('gltf-validator');
  * @param {Buffer} glb The glb buffer.
  * @returns {String} An error message if validation fails, otherwise undefined.
  */
-function validateGlb(glb, filePath) {
+function validateGlb(glb, filePath, archive, archivePath) {
     var version = glb.readUInt32LE(4);
 
     if (version !== 2) {
@@ -25,14 +26,19 @@ function validateGlb(glb, filePath) {
             new Promise((resolve, reject) => {
                 uri = path.resolve(path.dirname(filePath), decodeURIComponent(uri));
                 console.info("Loading external file: " + uri);
-                fs.readFile(uri, (err, data) => {
-                    if (err) {
-                        console.error(err.toString());
-                        reject(err.toString());
-                        return;
-                    }
-                    resolve(data);
-                });
+                if (defined(archive)) {
+                    let buffer = archive.entryDataSync(uri);
+                    resolve(buffer);
+                } else {
+                    fs.readFile(uri, (err, data) => {
+                        if (err) {
+                            console.error(err.toString());
+                            reject(err.toString());
+                            return;
+                        }
+                        resolve(data);
+                    });
+                }
             })
     }).then((result) => {
         // [result] will contain validation report in object form.
@@ -40,7 +46,7 @@ function validateGlb(glb, filePath) {
         if (result.issues.numErrors > 0) {
             let validationText = JSON.stringify(result, null, '  ');
             if (argv.writeReports) {
-                fs.writeFile(`${filePath}_report.json`, validationText, (err) => {
+                fs.writeFile(`${defined(archivePath) ? archivePath + '_' : ''}${filePath}_report.json`, validationText, (err) => {
                     if (err) { throw err; }
                 });
             }

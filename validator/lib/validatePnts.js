@@ -94,7 +94,7 @@ var featureTableSemantics = {
  * @param {Buffer} content A buffer containing the contents of a pnts tile.
  * @returns {String} An error message if validation fails, otherwise undefined.
  */
-function validatePnts(content, filePath) {
+function validatePnts(content, filePath, archive, archivePath) {
     var headerByteLength = 28;
     if (content.length < headerByteLength) {
         return 'Header must be 28 bytes.';
