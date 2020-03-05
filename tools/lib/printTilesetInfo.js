@@ -25,7 +25,7 @@ module.exports = printTilesetInfo;
  *
  * @returns {Promise} A promise that resolves when the operation completes.
  */
-function printTilesetInfo(content, inputPath, zip, zipFilePath) {
+function printTilesetInfo(content, inputPath, zip, zipFilePath, argv) {
   console.log(`Gathering information about ${defined(zipFilePath) ? zipFilePath + ' : ' : ''}${inputPath}`);
 
   var tileset = bufferToJson(content);
@@ -34,7 +34,7 @@ function printTilesetInfo(content, inputPath, zip, zipFilePath) {
 
   var root = tileset.root;
   
-  return gatherTileInfo(root, inputPath, zip, zipFilePath, true)
+  return gatherTileInfo(root, inputPath, zip, zipFilePath, argv.recursive)
     .then(infos => {
       console.log(infos);
       if (Array.isArray(infos)) {
@@ -50,6 +50,9 @@ function printTilesetInfo(content, inputPath, zip, zipFilePath) {
       } else {
         console.log(`Collected info for a single tileset`);
         printInfo(tileset, infos);
+        if (argv.pretty) {
+          console.log(JSON.stringify(tileset, null, 2));
+        }
       }
     });
 }

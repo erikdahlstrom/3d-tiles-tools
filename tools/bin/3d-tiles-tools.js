@@ -149,6 +149,12 @@ var argv = yargs
             default: false,
             description: 'List files in zip archive',
             type: 'boolean'
+        },
+        'r': {
+            alias: 'recursive',
+            default: true,
+            description: 'Recursively go through the entire tileset',
+            type: 'boolean'
         }
     })
     .demand(1)
@@ -421,7 +427,7 @@ function printInfoSync(zip, zipFilePath, content, innerPath, argv)
 {
     let extension = path.extname(innerPath);
     if (extension == '.json') {
-        return printTilesetInfo(content, innerPath, zip, zipFilePath);
+        return printTilesetInfo(content, innerPath, zip, zipFilePath, argv);
     } else if (extension == '.b3dm') {
         let b3dm = extractB3dm(content);
         console.log(b3dm);
