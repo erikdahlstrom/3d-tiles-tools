@@ -348,7 +348,7 @@ function generateIndex(inputFile, outputFile, force) {
 
 function zipIndexFind(zipIndex, searchHash) {
     let low = 0;
-    let high = zipIndex.length;
+    let high = zipIndex.length - 1;
     while(low <= high) {
         let mid = Math.floor(low + (high - low) / 2);
         const entry = zipIndex[mid];
@@ -392,7 +392,6 @@ async function searchIndex(inputFile, searchPath) {
     console.time('Read index');
     if (extension == '.3tz') {
         zipIndex = await readIndexFromZip(inputFile);
-        //console.error("Extracting index from zip not yet supported");
     } else { //if (path.filename == "@3dtilesIndex1@") {
         zipIndex = await readIndexData(inputFile);
 
@@ -429,7 +428,6 @@ async function readIndex(inputFile) {
     let zipIndex;
     if (extension == '.3tz') {
         zipIndex = await readIndexFromZip(inputFile);
-        //console.error("Extracting index from zip not yet supported");
     } else { //if (path.filename == "@3dtilesIndex1@") {
         zipIndex = await readIndexData(inputFile);
         console.log(`Read zip index, contains ${zipIndex.length} entries.`);
@@ -493,6 +491,13 @@ async function validateIndex(inputFile) {
         }
     }
 
+    let rootHash = crypto.createHash('md5').update("tileset.json").digest();
+    let rootIndex = zipIndexFind(zipIndex, rootHash);
+    if (rootIndex === -1) {
+        valid = false;
+        console.error(`Index has no key for the root tileset`);
+    }
+
     console.log(`${inputFile} is ${valid ? "valid" : "invalid"}`);
     return valid;
 }
@@ -546,6 +551,10 @@ function readIndexFromZip(inputFile, outputFile, force) {
             // console.log(`File made by: ${buffer.readUInt16LE(4)}`);
             // console.log(`Version needed to extract: ${buffer.readUInt16LE(6)}`);
             // console.log(`General purpose bits: ${buffer.readUInt16LE(8)}`);
+            let general_bits = buffer.readUInt16LE(8);
+            let use_size_from_central_dir = general_bits & (1 << 3);
+            //console.log(`general_bits: ${general_bits.toString(2)}`);
+            //console.log(`use_size_from_central_dir: ${use_size_from_central_dir}`)
             // console.log(`Compression method: ${buffer.readUInt16LE(10)}`);
             // console.log(`last mod file time: ${buffer.readUInt16LE(12)}`);
             // console.log(`last mod file date: ${buffer.readUInt16LE(14)}`);
@@ -582,34 +591,60 @@ function readIndexFromZip(inputFile, outputFile, force) {
                 + compressedSize;
             let localFileHeaderBuffer = Buffer.alloc(localFileHeaderSize);
 
-            //console.log(`Reading local file header from offset: ${relativeOffset}`);
+            console.log(`Reading local file header from offset: ${relativeOffset}`);
             return fsExtra.read(fd, localFileHeaderBuffer, 0, localFileHeaderSize, Number(relativeOffset))
-                .then(obj => obj.buffer)
+                .then(obj => {
+                    return { 
+                        "buffer": obj.buffer,
+                        "comp_size": compressedSize
+                    }
+                })
                 .catch(err => console.log(`Got error: ${err}`));
         })
-        .then(localFileHeaderBuffer => {
-            //console.log(`Read ${buffer.length}: ${buffer}`);
-            // console.log("--- Local file header ---")
-
-            const header = localFileHeaderBuffer.readUInt32LE(0);
-            if (header != 0x04034b50) {
-                console.error(`Bad local file header: ${header}`);
+        .then(data => {
+            //console.log(`Read ${localFileHeaderBuffer.length}: ${localFileHeaderBuffer}`);
+            //console.log("--- Local file header ---")
+            
+            let localFileHeaderBuffer = data.buffer;
+            
+            let header = {};
+            header.signature = localFileHeaderBuffer.readUInt32LE(0);
+            if (header.signature != 0x04034b50) {
+                console.error(`Bad local file header: ${header.signature}`);
                 return Promise.reject();
             }
-            let compressedSize = localFileHeaderBuffer.readUInt32LE(18);
-            //console.log(`compressed size: ${compressedSize}`);
-            //console.log(`uncompressed size: ${localFileHeaderBuffer.readUInt32LE(22)}`);
-            let filenameLength = localFileHeaderBuffer.readUInt16LE(26);
-            // console.log(`file name length: ${filenameLength}`);
-            let extrafieldLength = localFileHeaderBuffer.readUInt16LE(28);
-            //console.log(`extra field length: ${extrafieldLength}`);
-            let filename = localFileHeaderBuffer.toString('utf8', 30, 30 + filenameLength);
-            //console.log(`filename: ${filename}`);
+
+            header.version_needed = localFileHeaderBuffer.readUInt16LE(4);
+            header.general_bits = localFileHeaderBuffer.readUInt16LE(6);
+            header.compression_method = localFileHeaderBuffer.readUInt16LE(8);
+            header.last_mod_time = localFileHeaderBuffer.readUInt16LE(10);
+            header.last_mod_date = localFileHeaderBuffer.readUInt16LE(12);
+            header.crc32 = localFileHeaderBuffer.readUInt32LE(14);
+            header.comp_size = localFileHeaderBuffer.readUInt32LE(18);
+            header.uncomp_size = localFileHeaderBuffer.readUInt32LE(22);
+            header.filename_size = localFileHeaderBuffer.readUInt16LE(26);
+            header.extra_size = localFileHeaderBuffer.readUInt16LE(28);
+
+            let filename = localFileHeaderBuffer.toString('utf8', 30, 30 + header.filename_size);
+            console.log(`filename: ${filename}`);
+
+            //console.log(header);
+
+            let compressedSize = header.comp_size;
+            if (compressedSize === 0) {
+                compressedSize = data.comp_size;
+            }
 
             // ok, skip past the filename and extras and we have our data
-            let dataStartOffset = 30 + filenameLength + extrafieldLength;
+            let dataStartOffset = 30 + header.filename_size + header.extra_size;
 
-            const indexFileDataBuffer = localFileHeaderBuffer.slice(dataStartOffset, dataStartOffset + compressedSize);
+            const indexFileDataBuffer = localFileHeaderBuffer.slice(
+                dataStartOffset, dataStartOffset + compressedSize);
+            if (indexFileDataBuffer.length === 0) {
+                console.error(`Failed to get file data at offset ${dataStartOffset}`);
+                return Promise.reject("Failed to get file data");
+            }
+            
             if (defined(outputFile)) {
                 return fsExtra.writeFile(outputFile, indexFileDataBuffer);
             } else {
