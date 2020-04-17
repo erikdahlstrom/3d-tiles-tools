@@ -428,9 +428,8 @@ async function readIndex(inputFile) {
     let zipIndex;
     if (extension == '.3tz') {
         zipIndex = await readIndexFromZip(inputFile);
-    } else { //if (path.filename == "@3dtilesIndex1@") {
+    } else {
         zipIndex = await readIndexData(inputFile);
-        console.log(`Read zip index, contains ${zipIndex.length} entries.`);
     }
     return zipIndex;
 }
@@ -464,30 +463,35 @@ async function listIndex(inputFile, range) {
 
 async function validateIndex(inputFile) {
     const zipIndex = await readIndex(inputFile);
-    const numItems = zipIndex.length;
-    let errors = {
-        collisions: []
-    };
-    let valid = true;
-    for (let i = 1; i < numItems; i++) {
-        const prevEntry = zipIndex[i-1];
-        const curEntry = zipIndex[i];
-        const [curHashHi, curHashLo] = md5AsUInt64(curEntry.md5hash);
-        if (prevEntry.md5hash.compare(curEntry.md5hash) === 0) {
-            errors.collisions.push([i-1, i]);
-        }
-
-        const [prevHashHi, prevHashLo] = md5AsUInt64(prevEntry.md5hash);
-
-        if (!md5LessThan(prevEntry.md5hash, curEntry.md5hash)) {
-            console.warn(`Wrong sort order\n${i}: ${curEntry.md5hash.toString('hex')} (${curHashHi} ${curHashLo}) should be smaller than\n${i-1}: ${prevEntry.md5hash.toString('hex')} (${prevHashHi} ${prevHashLo})`);
-            valid = false;
-        }
+    if (zipIndex === undefined) {
+        return false;
     }
+    let valid = true;
+    const numItems = zipIndex.length;
+    if (numItems > 1) {
+        let errors = {
+            collisions: []
+        };
+        for (let i = 1; i < numItems; i++) {
+            const prevEntry = zipIndex[i-1];
+            const curEntry = zipIndex[i];
+            const [curHashHi, curHashLo] = md5AsUInt64(curEntry.md5hash);
+            if (prevEntry.md5hash.compare(curEntry.md5hash) === 0) {
+                errors.collisions.push([i-1, i]);
+            }
 
-    if (errors.collisions.length) {
-        for (let c of errors.collisions) {
-            console.warn(`Got hash collision at index ${c[0]} and ${c[1]}`);
+            const [prevHashHi, prevHashLo] = md5AsUInt64(prevEntry.md5hash);
+
+            if (!md5LessThan(prevEntry.md5hash, curEntry.md5hash)) {
+                console.warn(`Wrong sort order\n${i}: ${curEntry.md5hash.toString('hex')} (${curHashHi} ${curHashLo}) should be smaller than\n${i-1}: ${prevEntry.md5hash.toString('hex')} (${prevHashHi} ${prevHashLo})`);
+                valid = false;
+            }
+        }
+
+        if (errors.collisions.length) {
+            for (let c of errors.collisions) {
+                console.warn(`Got hash collision at index ${c[0]} and ${c[1]}`);
+            }
         }
     }
 
@@ -519,27 +523,22 @@ function readIndexFromZip(inputFile, outputFile, force) {
             let length = bytesToRead;
             return fsExtra.read(fd, buffer, 0, length, offset)
                 .then(obj => {
-                    //console.log(`Bytes read ${obj.bytesRead} buffer: ${obj.buffer} : ${obj.buffer.length}`);
                     const END_OF_CENTRAL_DIRECTORY = 0x06054b50;
                     const START_OF_CENTRAL_DIRECTORY = 0x02014b50;
                     let start = 0, end = 0;
                     for (let i = obj.buffer.length - 4; i > 0; i--) {
                         let val = obj.buffer.readUInt32LE(i);
-                        //console.log(`[${i}]: ${val} [${END_OF_CENTRAL_DIRECTORY}]`);
                         if (val == END_OF_CENTRAL_DIRECTORY) {
-                            //console.log(`Found end of central directory at offset: ${i}: ${val}`);
                             end = i;
                         }
                         if (val == START_OF_CENTRAL_DIRECTORY) {
-                            //console.log(`Found start of central directory at offset: ${i}: ${val}`);
                             start = i;
                             break;
                         }
                     }
 
                     if (start != end) {
-                        //console.log(`${start} - ${end}: length: ${end-start}`);
-                        return obj.buffer.slice(start); //, end-start);
+                        return obj.buffer.slice(start);
                     }
 
                     return obj.buffer;
@@ -552,6 +551,17 @@ function readIndexFromZip(inputFile, outputFile, force) {
             // console.log(`Version needed to extract: ${buffer.readUInt16LE(6)}`);
             // console.log(`General purpose bits: ${buffer.readUInt16LE(8)}`);
             let general_bits = buffer.readUInt16LE(8);
+
+            const disallowed_flags_mask =
+                (1 << 0) |  // File must not be encrypted
+                (1 << 3) |  // Local File Headers must have file sizes set
+                (1 << 5) |  // No compressed patched data
+                (1 << 13);  // No encrypted central directory
+            
+            if (disallowed_flags_mask & general_bits) {
+                throw Error(`Zip has disallowed bitflags set in Central Directory Header: 0b${(disallowed_flags_mask & general_bits).toString(2)}`);
+            }
+            
             let use_size_from_central_dir = general_bits & (1 << 3);
             //console.log(`general_bits: ${general_bits.toString(2)}`);
             //console.log(`use_size_from_central_dir: ${use_size_from_central_dir}`)
@@ -593,25 +603,19 @@ function readIndexFromZip(inputFile, outputFile, force) {
 
             console.log(`Reading local file header from offset: ${relativeOffset}`);
             return fsExtra.read(fd, localFileHeaderBuffer, 0, localFileHeaderSize, Number(relativeOffset))
-                .then(obj => {
-                    return { 
-                        "buffer": obj.buffer,
-                        "comp_size": compressedSize
-                    }
-                })
+                .then(obj => obj.buffer)
                 .catch(err => console.log(`Got error: ${err}`));
         })
-        .then(data => {
+        .then(buffer => {
             //console.log(`Read ${localFileHeaderBuffer.length}: ${localFileHeaderBuffer}`);
             //console.log("--- Local file header ---")
             
-            let localFileHeaderBuffer = data.buffer;
+            let localFileHeaderBuffer = buffer;
             
             let header = {};
             header.signature = localFileHeaderBuffer.readUInt32LE(0);
             if (header.signature != 0x04034b50) {
-                console.error(`Bad local file header: ${header.signature}`);
-                return Promise.reject();
+                throw Error(`Bad local file header: ${header.signature}`);
             }
 
             header.version_needed = localFileHeaderBuffer.readUInt16LE(4);
@@ -632,7 +636,7 @@ function readIndexFromZip(inputFile, outputFile, force) {
 
             let compressedSize = header.comp_size;
             if (compressedSize === 0) {
-                compressedSize = data.comp_size;
+                throw Error(`Zip Local File Headers must have non-zero file sizes set.`);
             }
 
             // ok, skip past the filename and extras and we have our data
@@ -641,8 +645,7 @@ function readIndexFromZip(inputFile, outputFile, force) {
             const indexFileDataBuffer = localFileHeaderBuffer.slice(
                 dataStartOffset, dataStartOffset + compressedSize);
             if (indexFileDataBuffer.length === 0) {
-                console.error(`Failed to get file data at offset ${dataStartOffset}`);
-                return Promise.reject("Failed to get file data");
+                throw Error(`Failed to get file data at offset ${dataStartOffset}`);
             }
             
             if (defined(outputFile)) {
@@ -653,6 +656,5 @@ function readIndexFromZip(inputFile, outputFile, force) {
         })
         .finally(() => {
             fsExtra.close(fd);
-            //console.log(`Closed file ${fd}`);    
         });
 }
