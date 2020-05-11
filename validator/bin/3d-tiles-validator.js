@@ -61,7 +61,7 @@ if (extension === '') {
     filePath = path.join(filePath, 'tileset.json');
 }
 
-if (extension === '.zip') {
+if (extension === '.zip' || extension === '.3tz') {
     const archive = new StreamZip({
         file: filePath,
         storeEntries: true
