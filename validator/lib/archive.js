@@ -367,7 +367,6 @@ async function ReadZipLocalFileHeader(fd, offset, path)
 
 async function getIndexReader(filePath)
 {
-    throw Error("baaah");
     const index = await readIndex(filePath);
     let fd = await fsExtra.open(filePath, 'r');
 
