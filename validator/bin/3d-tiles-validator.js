@@ -8,6 +8,7 @@ const readTile = require('../lib/readTile');
 const readTileset = require('../lib/readTileset');
 const validateTile = require('../lib/validateTile');
 const validateTileset = require('../lib/validateTileset');
+const archive = require('../lib/archive');
 
 const defined = Cesium.defined;
 
@@ -26,6 +27,14 @@ const argv = yargs
             demandOption: true,
             type: 'string'
         },
+        innerPath: {
+            alias: 's',
+            describe: 'Path to the tileset JSON or tile to validate.',
+            normalize: true,
+            default: 'tileset.json',
+            demandOption: false,
+            type: 'string'
+        },
         writeReports: {
             alias: 'r',
             describe: 'Write glTF error report next to the glTF file in question.',
@@ -35,21 +44,48 @@ const argv = yargs
     }).parse(args);
 
 async function validate(argv) {
-    const filePath = argv.input;
+    let filePath = argv.input;
     const writeReports = argv.writeReports;
     let message;
+
+    let reader = {
+        readTile: readTile,
+        readTileset: readTileset
+    };
+
+    if (path.extname(filePath) === '.3tz') {
+        try {
+            reader = await archive.getIndexReader(filePath);
+            filePath = argv.innerPath;
+        }
+        catch(e) {
+            console.error(`Failed to read ${path.basename(filePath)} as indexed archive, attempting to read as plain zip`);
+            reader = await archive.getZipReader(filePath);
+            filePath = argv.innerPath;
+        }
+    } else if (path.extname(filePath) === '.zip') {
+        try {
+            reader = await archive.getZipReader(filePath);
+            filePath = argv.innerPath;
+        }
+        catch(e) {
+            throw e;
+        }
+    }
 
     try {
         if (isTile(filePath)) {
             message = await validateTile({
-                content: await readTile(filePath),
+                reader: reader,
+                content: await reader.readTile(filePath),
                 filePath: filePath,
                 directory: path.dirname(filePath),
                 writeReports: writeReports
             });
         } else {
             message = await validateTileset({
-                tileset: await readTileset(filePath),
+                reader: reader,
+                tileset: await reader.readTileset(filePath),
                 filePath: filePath,
                 directory: path.dirname(filePath),
                 writeReports: writeReports

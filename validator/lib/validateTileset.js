@@ -156,6 +156,8 @@ async function validateTileHierarchy(root, options) {
 }
 
 async function validateContent(contentPath, directory, options) {
+    const reader = options.reader;
+    contentPath = utility.normalizePath(contentPath);
     try {
         if (isDataUri(contentPath)) {
             const content = Buffer.from(contentPath.split(',')[1], 'base64');
@@ -167,14 +169,16 @@ async function validateContent(contentPath, directory, options) {
             });
         } else if (isTile(contentPath)) {
             return await validateTile({
-                content: await readTile(contentPath),
+                reader: reader,
+                content: await reader.readTile(contentPath),
                 filePath: contentPath,
                 directory: path.dirname(contentPath),
                 writeReports: options.writeReports
             });
         }
         return await validateTileset({
-            tileset: await readTileset(contentPath),
+            reader: reader,
+            tileset: await reader.readTileset(contentPath),
             filePath: contentPath,
             directory: path.dirname(contentPath),
             writeReports: options.writeReports
