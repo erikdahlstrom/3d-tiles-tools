@@ -32,7 +32,7 @@ function validateTileset(tileset, filePath, tilesetDirectory, argv) {
     if (defined(message)) {
         return Promise.resolve(message);
     }
-    return Promise.resolve(validateTileHierarchy(tileset.root, filePath, tilesetDirectory, argv));
+    return Promise.resolve(validateTileHierarchy(tileset.root, tileset.version, filePath, tilesetDirectory, argv));
 }
 
 function validateTopLevel(tileset) {
@@ -52,8 +52,8 @@ function validateTopLevel(tileset) {
         return 'Tileset must declare a version in its asset property';
     }
 
-    if (tileset.asset.version !== '1.0') {
-        return 'Tileset version must be 1.0. Tileset version provided: ' + tileset.asset.version;
+    if (tileset.asset.version !== '1.0' && tileset.asset.version !== '2.0.0-alpha.0') {
+        return 'Unknown tileset version. Tileset version provided: ' + tileset.asset.version;
     }
 
     var gltfUpAxis = tileset.asset.gltfUpAxis;
@@ -64,7 +64,7 @@ function validateTopLevel(tileset) {
     }
 }
 
-function validateTileHierarchy(root, filePath, tilesetDirectory, argv) {
+function validateTileHierarchy(root, version, filePath, tilesetDirectory, argv) {
     var contentPaths = [];
 
     var stack = [];
@@ -157,7 +157,7 @@ function validateTileHierarchy(root, filePath, tilesetDirectory, argv) {
     console.log(`Validating ${filePath} - ${numContentPaths} sub tiles`);
     return Promise.map(contentPaths, function (contentPath) {
         //console.log("Validating " + contentPath);
-        if (isTile(contentPath)) {
+        if (isTile(contentPath, version)) {
             return readTile(contentPath)
                 .then(function (content) {
                     return validateTile(content, contentPath, argv);

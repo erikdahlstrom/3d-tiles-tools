@@ -17,6 +17,7 @@ var Cartesian3 = Cesium.Cartesian3;
 var Matrix3 = Cesium.Matrix3;
 var sphereInsideBox = utility.sphereInsideBox;
 var defined = Cesium.defined;
+var normalizePath = utility.normalizePath;
 
 module.exports = validateTilesetFromArchive;
 
@@ -53,8 +54,8 @@ function validateTopLevel(tileset) {
         return 'Tileset must declare a version in its asset property';
     }
 
-    if (tileset.asset.version !== '1.0') {
-        return 'Tileset version must be 1.0. Tileset version provided: ' + tileset.asset.version;
+    if (tileset.asset.version !== '1.0' && tileset.asset.version !== '2.0.0-alpha.0') {
+        return 'Unknown tileset version. Tileset version provided: ' + tileset.asset.version;
     }
 
     var gltfUpAxis = tileset.asset.gltfUpAxis;
@@ -93,10 +94,10 @@ function validateTileHierarchyFromArchive(root, filePath, tilesetDirectory, argv
         }
 
         if (defined(content) && defined(content.url)) {
-            contentPaths.push(path.join(tilesetDirectory, content.url));
+            contentPaths.push(normalizePath(path.join(tilesetDirectory, content.url)));
         }
         if (defined(content) && defined(content.uri)) {
-            contentPaths.push(path.join(tilesetDirectory, content.uri));
+            contentPaths.push(normalizePath(path.join(tilesetDirectory, content.uri)));
         }
 
         var outerTransform;
@@ -157,7 +158,7 @@ function validateTileHierarchyFromArchive(root, filePath, tilesetDirectory, argv
     };
   //console.log(`Validating ${archivePath} : ${filePath} - ${numContentPaths} sub tiles`);
   return Promise.map(contentPaths, function (contentPath) {
-        //console.log(`Validating ${archivePath} : ${contentPath}`);
+        // console.log(`Validating ${archivePath} : ${contentPath}`);
         if (isTile(contentPath)) {
             return readTileFromArchive(archive, contentPath)
                 .then(function (content) {
@@ -173,7 +174,7 @@ function validateTileHierarchyFromArchive(root, filePath, tilesetDirectory, argv
                 return validateTilesetFromArchive(tileset, contentPath, path.dirname(contentPath), argv, archive, archivePath);
             })
             .catch(function(error) {
-                return 'Could not read file: ' + error.message;
+                return 'Could not read tileset from archive, message: ' + error.message;
             })
             .finally(reportProgress);
     })

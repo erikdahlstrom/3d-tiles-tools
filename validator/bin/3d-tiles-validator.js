@@ -1,17 +1,18 @@
 #!/usr/bin/env node
 'use strict';
-var Cesium = require('cesium');
-var path = require('path');
-var yargs = require('yargs');
-var isTile = require('../lib/isTile');
-var readTile = require('../lib/readTile');
-var readTileset = require('../lib/readTileset');
-var readTileFromArchive = require('../lib/readTileFromArchive');
-var readTilesetFromArchive = require('../lib/readTilesetFromArchive');
-var validateTile = require('../lib/validateTile');
-var validateTileset = require('../lib/validateTileset');
-var validateTileFromArchive = require('../lib/validateTileFromArchive');
-var validateTilesetFromArchive = require('../lib/validateTilesetFromArchive');
+const Cesium = require('cesium');
+const path = require('path');
+const yargs = require('yargs');
+const isTile = require('../lib/isTile');
+const readTile = require('../lib/readTile');
+const readTileset = require('../lib/readTileset');
+const readTileFromArchive = require('../lib/readTileFromArchive');
+const readTilesetFromArchive = require('../lib/readTilesetFromArchive');
+const validateTile = require('../lib/validateTile');
+const validateTileset = require('../lib/validateTileset');
+const validateTileFromArchive = require('../lib/validateTileFromArchive');
+const validateTilesetFromArchive = require('../lib/validateTilesetFromArchive');
+const util = require('../lib/utility');
 const StreamZip = require('node-stream-zip');
 
 var defined = Cesium.defined;
@@ -55,7 +56,7 @@ global.argv = yargs
 
 var promise;
 var filePath = argv.input;
-var innerPath = argv.innerPath;
+var innerPath = util.normalizePath(argv.innerPath);
 var extension = path.extname(filePath);
 if (extension === '') {
     filePath = path.join(filePath, 'tileset.json');

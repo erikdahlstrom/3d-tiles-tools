@@ -16,8 +16,14 @@ module.exports = {
     sphereInsideSphere : sphereInsideSphere,
     sphereInsideBox : sphereInsideBox,
     boxInsideBox : boxInsideBox,
-    boxInsideSphere : boxInsideSphere
+    boxInsideSphere : boxInsideSphere,
+    normalizePath: normalizePath
 };
+
+function normalizePath(path) {
+    let res = path.replace(/\.\//, "");
+    return res.replace(/\\/g, '/');
+}
 
 function typeToComponentsLength(type) {
     switch (type) {
