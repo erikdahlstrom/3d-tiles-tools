@@ -170,7 +170,7 @@ async function validateContent(contentPath, directory, options) {
         } else if (isTile(contentPath)) {
             return await validateTile({
                 reader: reader,
-                content: await reader.readTile(contentPath),
+                content: await reader.readBinary(contentPath),
                 filePath: contentPath,
                 directory: path.dirname(contentPath),
                 writeReports: options.writeReports
@@ -178,7 +178,7 @@ async function validateContent(contentPath, directory, options) {
         }
         return await validateTileset({
             reader: reader,
-            tileset: await reader.readTileset(contentPath),
+            tileset: await reader.readJson(contentPath),
             filePath: contentPath,
             directory: path.dirname(contentPath),
             writeReports: options.writeReports

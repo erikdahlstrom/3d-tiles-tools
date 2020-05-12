@@ -49,8 +49,8 @@ async function validate(argv) {
     let message;
 
     let reader = {
-        readTile: readTile,
-        readTileset: readTileset
+        readBinary: readTile,
+        readJson: readTileset
     };
 
     if (path.extname(filePath) === '.3tz') {
@@ -77,7 +77,7 @@ async function validate(argv) {
         if (isTile(filePath)) {
             message = await validateTile({
                 reader: reader,
-                content: await reader.readTile(filePath),
+                content: await reader.readBinary(filePath),
                 filePath: filePath,
                 directory: path.dirname(filePath),
                 writeReports: writeReports
@@ -85,7 +85,7 @@ async function validate(argv) {
         } else {
             message = await validateTileset({
                 reader: reader,
-                tileset: await reader.readTileset(filePath),
+                tileset: await reader.readJson(filePath),
                 filePath: filePath,
                 directory: path.dirname(filePath),
                 writeReports: writeReports

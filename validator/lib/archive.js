@@ -387,8 +387,8 @@ async function getIndexReader(filePath)
     };
 
     return {
-        readTile: readData,
-        readTileset: async (path) => {
+        readBinary: readData,
+        readJson: async (path) => {
             let buffer = await readData(path);
             return bufferToJson(buffer);
         }
@@ -416,11 +416,11 @@ async function getZipReader(filePath)
     let zip = await zipPromise;
             
     return {
-        readTile: (path) => {
+        readBinary: (path) => {
             //console.log(`zipReader.readTile(${path})`);
             return zip.entryDataSync(path);
         },
-        readTileset: (path) => {
+        readJson: (path) => {
             let buffer = zip.entryDataSync(path);
             return bufferToJson(buffer);
         }
