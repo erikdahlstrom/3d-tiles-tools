@@ -99,7 +99,9 @@ async function validateTileHierarchy(root, options) {
             if (isDataUri(content.uri)) {
                 contentPaths.push(content.uri);
             } else {
-                contentPaths.push(path.join(directory, content.uri));
+                if (!options.onlyValidateTilesets || content.uri.endsWith(".json")) {
+                    contentPaths.push(path.join(directory, content.uri));
+                }
             }
         }
 
@@ -159,7 +161,6 @@ async function validateTileHierarchy(root, options) {
 
 async function validateContent(contentPath, directory, options) {
     const reader = options.reader;
-    contentPath = utility.normalizePath(contentPath);
     try {
         if (isDataUri(contentPath)) {
             if (options.onlyValidateTilesets) {
@@ -176,6 +177,7 @@ async function validateContent(contentPath, directory, options) {
             if (options.onlyValidateTilesets) {
                 return;
             }
+            contentPath = utility.normalizePath(contentPath);
             return await validateTile({
                 reader: reader,
                 content: await reader.readBinary(contentPath),
@@ -184,6 +186,7 @@ async function validateContent(contentPath, directory, options) {
                 writeReports: options.writeReports
             });
         }
+        contentPath = utility.normalizePath(contentPath);
         return await validateTileset({
             reader: reader,
             tileset: await reader.readJson(contentPath),
