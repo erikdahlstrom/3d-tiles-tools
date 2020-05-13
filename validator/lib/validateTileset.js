@@ -30,6 +30,7 @@ module.exports = validateTileset;
  * @param {Object} options An object with the following properties:
  * @param {Buffer} options.tileset The tileset JSON.
  * @param {String} options.filePath The tileset JSON file path.
+ * @param {Boolean} options.onlyValidateTilesets Only check tilesets, skip any other tile type.
  * @param {String} options.directory The directory containing the tileset JSON that all paths in the tileset JSON are relative to.
  * @returns {Promise} A promise that resolves when the validation completes. If the validation fails, the promise will resolve to an error message.
  */
@@ -161,6 +162,9 @@ async function validateContent(contentPath, directory, options) {
     contentPath = utility.normalizePath(contentPath);
     try {
         if (isDataUri(contentPath)) {
+            if (options.onlyValidateTilesets) {
+                return;
+            }
             const content = Buffer.from(contentPath.split(',')[1], 'base64');
             return await validateTile({
                 content: content,
@@ -169,6 +173,9 @@ async function validateContent(contentPath, directory, options) {
                 writeReports: options.writeReports
             });
         } else if (isTile(contentPath, options.version)) {
+            if (options.onlyValidateTilesets) {
+                return;
+            }
             return await validateTile({
                 reader: reader,
                 content: await reader.readBinary(contentPath),
@@ -182,7 +189,8 @@ async function validateContent(contentPath, directory, options) {
             tileset: await reader.readJson(contentPath),
             filePath: contentPath,
             directory: path.dirname(contentPath),
-            writeReports: options.writeReports
+            writeReports: options.writeReports,
+            onlyValidateTilesets: options.onlyValidateTilesets
         });
     } catch (error) {
         console.log(`Could not read file: ${error.message}`);

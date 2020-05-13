@@ -41,6 +41,12 @@ const argv = yargs
             describe: 'Write glTF error report next to the glTF file in question.',
             default: false,
             type: 'boolean'
+        },
+        onlyValidateTilesets: {
+            alias: 'q',
+            describe: 'Only validate tileset files, for quick shallow validation.',
+            default: false,
+            type: 'boolean'
         }
     }).parse(args);
 
@@ -71,20 +77,25 @@ async function validate(argv) {
 
     try {
         if (isTile(filePath)) {
-            message = await validateTile({
-                reader: reader,
-                content: await reader.readBinary(filePath),
-                filePath: filePath,
-                directory: path.dirname(filePath),
-                writeReports: writeReports
-            });
+            if (argv.onlyValidateTilesets) {
+                message = `${filePath} is a tile, validation skipped.`;
+            } else {
+                message = await validateTile({
+                    reader: reader,
+                    content: await reader.readBinary(filePath),
+                    filePath: filePath,
+                    directory: path.dirname(filePath),
+                    writeReports: writeReports
+                });
+                }
         } else {
             message = await validateTileset({
                 reader: reader,
                 tileset: await reader.readJson(filePath),
                 filePath: filePath,
                 directory: path.dirname(filePath),
-                writeReports: writeReports
+                writeReports: writeReports,
+                onlyValidateTilesets: argv.onlyValidateTilesets
             });
         }
     } catch (error) {
