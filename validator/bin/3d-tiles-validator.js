@@ -9,6 +9,7 @@ const readTileset = require('../lib/readTileset');
 const validateTile = require('../lib/validateTile');
 const validateTileset = require('../lib/validateTileset');
 const archive = require('../lib/archive');
+const utility = require('../lib/utility');
 
 const defined = Cesium.defined;
 
@@ -56,7 +57,7 @@ async function validate(argv) {
     if (path.extname(filePath) === '.3tz') {
         try {
             reader = await archive.getIndexReader(filePath);
-            filePath = argv.innerPath;
+            filePath = utility.normalizePath(argv.innerPath);
         }
         catch(e) {
             console.error(`Failed to read ${path.basename(filePath)} as indexed archive, attempting to read as plain zip`);
@@ -64,13 +65,8 @@ async function validate(argv) {
             filePath = argv.innerPath;
         }
     } else if (path.extname(filePath) === '.zip') {
-        try {
-            reader = await archive.getZipReader(filePath);
-            filePath = argv.innerPath;
-        }
-        catch(e) {
-            throw e;
-        }
+        reader = await archive.getZipReader(filePath);
+        filePath = utility.normalizePath(argv.innerPath);
     }
 
     try {

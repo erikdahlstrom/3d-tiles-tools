@@ -299,10 +299,10 @@ async function searchIndex(zipIndex, searchPath) {
     let hashedSearchPath = crypto.createHash('md5').update(searchPath).digest();
     //console.log(`Searching index for ${searchPath} (${hashedSearchPath.toString('hex')})`);
     
-    console.time('Search index');
+    //console.time('Search index');
     let matchedIndex = zipIndexFind(zipIndex, hashedSearchPath);
     //console.log(`matchedIndex: ${matchedIndex}`);
-    console.timeEnd('Search index');
+    //console.timeEnd('Search index');
     if (matchedIndex === -1) {
         console.log(`Couldn't find ${searchPath} (${hashedSearchPath.toString('hex')})`);
         return undefined;

@@ -39,6 +39,7 @@ async function validateTileset(options) {
     if (defined(message)) {
         return message;
     }
+    options.version = tileset.asset.version;
     return validateTileHierarchy(tileset.root, options);
 }
 
@@ -59,8 +60,8 @@ function validateTopLevel(tileset) {
         return 'Tileset must declare a version in its asset property';
     }
 
-    if (tileset.asset.version !== '1.0') {
-        return `Tileset version must be 1.0. Tileset version provided: ${tileset.asset.version}`;
+    if (tileset.asset.version !== "1.0" && tileset.asset.version !== "2.0.0-alpha.0") {
+        return `Tileset version must be 1.0 or 2.0.0-alpha.0. Tileset version provided: ${tileset.asset.version}`;
     }
 }
 
@@ -167,7 +168,7 @@ async function validateContent(contentPath, directory, options) {
                 directory: directory,
                 writeReports: options.writeReports
             });
-        } else if (isTile(contentPath)) {
+        } else if (isTile(contentPath, options.version)) {
             return await validateTile({
                 reader: reader,
                 content: await reader.readBinary(contentPath),
