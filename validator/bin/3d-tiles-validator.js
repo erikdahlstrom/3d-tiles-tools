@@ -57,11 +57,11 @@ const argv = yargs
     }).parse(args);
 
 async function validate(argv) {
-    const filePath = argv.input;
+    let filePath = argv.input;
     const writeReports = argv.writeReports;
     let message;
 
-    const reader = {
+    let reader = {
         readBinary: readTile,
         readJson: readTileset
     };
@@ -72,6 +72,7 @@ async function validate(argv) {
             filePath = utility.normalizePath(argv.innerPath);
         }
         catch(err) {
+            console.error(err);
             console.error(`Failed to read ${path.basename(filePath)} as indexed archive, attempting to read as plain zip`);
             try {
                 reader = await archive.getZipReader(filePath);
