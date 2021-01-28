@@ -53,6 +53,30 @@ const argv = yargs
             describe: 'Validate the index file.',
             default: true,
             type: 'boolean'
+        },
+        wffVersion: {
+            alias: 'wff',
+            describe: 'Version of the WFF/3tz specification to verify against',
+            default: 1,
+            type: 'integer'
+        },
+        repairIndexOffsets: {
+            alias: 'rio',
+            describe: 'Repair index file offsets.',
+            default: false,
+            type: 'boolean'
+        },
+        outPath: {
+            alias: 'o',
+            describe: 'Outpath for repaired index file',
+            default: '@3dtilesIndex1@',
+            type: 'string'
+        },
+        autoZipFallback: {
+            alias: 'azf',
+            describe: 'If a 3tz read fails for any reason, attempt to read as zip instead',
+            default: false,
+            type: 'boolean'
         }
     }).parse(args);
 
@@ -67,19 +91,27 @@ async function validate(argv) {
     };
 
     if (path.extname(filePath) === '.3tz') {
+        if (argv.repairIndexOffsets) {
+            return await archive.repairIndexOffsets(filePath, argv.outPath, argv.wffVersion);
+        }
         try {
-            reader = await archive.getIndexReader(filePath, argv.validateIndex);
+            reader = await archive.getIndexReader(filePath, argv.validateIndex, argv.wffVersion);
             filePath = utility.normalizePath(argv.innerPath);
         }
         catch(err) {
-            console.error(err);
-            console.error(`Failed to read ${path.basename(filePath)} as indexed archive, attempting to read as plain zip`);
-            try {
-                reader = await archive.getZipReader(filePath);
-                filePath = argv.innerPath;
-            }
-            catch(err) {
-                return;
+            //console.error(err.message);
+            if (argv.autoZipFallback) {
+                console.error(`Failed to read ${path.basename(filePath)} as indexed archive, attempting to read as plain zip`);
+                try {
+                    reader = await archive.getZipReader(filePath);
+                    filePath = argv.innerPath;
+                }
+                catch(err) {
+                    return -1;
+                }
+            } else {
+                console.error(`${path.basename(filePath)} is not valid (WFF version ${argv.wffVersion})`)
+                return -1;
             }
         }
     } else if (path.extname(filePath) === '.zip') {
@@ -88,7 +120,7 @@ async function validate(argv) {
             filePath = utility.normalizePath(argv.innerPath);
         }
         catch(err) {
-            return;
+            return -1;
         }
     }
 
@@ -116,15 +148,20 @@ async function validate(argv) {
             });
         }
     } catch (error) {
-        console.log(`Could not read input: ${error.message}`);
-        return;
+        console.error(`Could not read input: ${error.message}`);
+        return -1;
     }
 
     if (defined(message)) {
-        console.log(message);
+        console.error(message);
     } else {
         console.log(`${filePath} is valid`);
+        return 0;
     }
+
+    return -1;
 }
+
+console.log(`Validating as WFF version ${argv.wffVersion}`);
 
 return validate(argv);

@@ -17,13 +17,15 @@ const crypto = require('crypto');
 const bufferToJson = require('./bufferToJson');
 const util = require('./utility');
 const defined = Cesium.defined;
+const zlib = require('zlib');
 
 module.exports = {
     readIndex: readIndex,
     listIndex: listIndex,
     validateIndex: validateIndex,
     getIndexReader: getIndexReader,
-    getZipReader: getZipReader
+    getZipReader: getZipReader,
+    repairIndexOffsets: repairIndexOffsets
 };
 
 const ZIP_END_OF_CENTRAL_DIRECTORY_HEADER_SIG = 0x06054b50;
@@ -31,6 +33,8 @@ const ZIP_START_OF_CENTRAL_DIRECTORY_HEADER_SIG = 0x02014b50;
 const ZIP64_EXTENDED_INFORMATION_EXTRA_SIG = 0x0001;
 const ZIP_LOCAL_FILE_HEADER_STATIC_SIZE = 30;
 const ZIP_CENTRAL_DIRECTORY_STATIC_SIZE = 46;
+const ZIP_COMPRESSION_METHOD_STORE = 0;
+const ZIP_COMPRESSION_METHOD_DEFLATE = 8;
 
 function getLastCentralDirectoryEntry(fd, stat) {
     const bytesToRead = 320;
@@ -59,7 +63,7 @@ function getLastCentralDirectoryEntry(fd, stat) {
     });
 }
 
-async function validateCentralDirectoryHeaderAndGetFileContents(fd, buffer, expectedFilename)
+async function validateCentralDirectoryHeaderAndGetFileContents(fd, buffer, expectedFilename, wffVersion)
 {
     const header = {};
     header.signature = buffer.readUInt32LE(0);
@@ -81,8 +85,14 @@ async function validateCentralDirectoryHeaderAndGetFileContents(fd, buffer, expe
     }
 
     header.comp_method = buffer.readUInt16LE(10);
-    if (header.comp_method !== 0) {
-        throw Error(`Zip must use STORE compression method, found compression method ${header.comp_method}`);
+    if (wffVersion === 1) {
+        if (header.comp_method !== ZIP_COMPRESSION_METHOD_STORE) {
+            throw Error(`Zip must use STORE compression method, found compression method ${header.comp_method}`);
+        }
+    } else if (wffVersion > 1) {
+        if (header.comp_method !== ZIP_COMPRESSION_METHOD_STORE && header.comp_method !== ZIP_COMPRESSION_METHOD_DEFLATE) {
+            throw Error(`Zip must use STORE or DEFLATE compression method, found compression method ${header.comp_method}`);
+        }
     }
     header.last_mod_time = buffer.readUInt16LE(12);
     header.last_mod_date = buffer.readUInt16LE(14);
@@ -275,7 +285,7 @@ function slowValidateIndex(zipIndex, zipFilePath) {
     });
 }
 
-async function validateIndex(zipIndex, zipFilePath, quick) {
+async function validateIndex(zipIndex, zipFilePath, wffVersion, quick) {
     console.time('validate index');
     let valid = true;
     const numItems = zipIndex.length;
@@ -368,9 +378,10 @@ async function searchIndex(zipIndex, searchPath) {
 }
 
 // if outputFile is not supplied, read index into memory
-async function readIndex(inputFile, outputFile, indexFilename = '@3dtilesIndex1@') {
+async function readIndex(inputFile, outputFile, indexFilename = '@3dtilesIndex1@', wffVersion = 1) {
     // console.log(`Read index from ${inputFile}`);
     console.time('readIndex');
+    console.time('readIndexFromZip')
     let fd;
     return fsExtra.open(inputFile, 'r')
         .then(f => {
@@ -381,18 +392,23 @@ async function readIndex(inputFile, outputFile, indexFilename = '@3dtilesIndex1@
             return getLastCentralDirectoryEntry(fd, stat);
         })
         .then(buffer => {
-            return validateCentralDirectoryHeaderAndGetFileContents(fd, buffer, indexFilename);
+            return validateCentralDirectoryHeaderAndGetFileContents(fd, buffer, indexFilename, wffVersion);
         })
         .then(buffer => {
+            console.timeEnd('readIndexFromZip');
             const header = parseLocalFileHeaderAndValidateFilename(buffer, indexFilename);
 
             // ok, skip past the filename and extras and we have our data
             const dataStartOffset = ZIP_LOCAL_FILE_HEADER_STATIC_SIZE + header.filename_size + header.extra_size;
 
-            const indexFileDataBuffer = buffer.slice(
+            let indexFileDataBuffer = buffer.slice(
                 dataStartOffset, dataStartOffset + header.comp_size);
             if (indexFileDataBuffer.length === 0) {
                 throw Error(`Failed to get file data at offset ${dataStartOffset}`);
+            }
+
+            if (wffVersion > 1 && header.compression_method === ZIP_COMPRESSION_METHOD_DEFLATE) {
+                indexFileDataBuffer = zlib.inflateRawSync(indexFileDataBuffer);
             }
 
             if (defined(outputFile)) {
@@ -423,11 +439,74 @@ async function readZipLocalFileHeader(fd, offset, path)
     return header;
 }
 
-async function getIndexReader(filePath, performIndexValidation)
+async function repairIndexOffsets(filePath, outRepairedIndexPath, wffVersion)
 {
-    const index = await readIndex(filePath);
+    let zipIndex = await readIndex(filePath, undefined, '@3dtilesIndex1@', wffVersion);
+    const fd = await fsExtra.open(outRepairedIndexPath, 'w'); 
+    console.time('repairIndex');
+    return new Promise(
+        (resolve, reject) => {
+            let zipFileEntriesCount = 0;
+            const zip = new StreamZip({
+                file: filePath,
+                storeEntries: false
+            });
+            zip.on('error', (err) => {
+                throw err;
+            });
+            zip.on('ready', () => {
+                // console.log(`Total zip entries: ${zip.entriesCount} file entries: ${zipFileEntriesCount}`);
+                zip.close();
+
+                if (zipIndex.length !== zipFileEntriesCount) {
+                    throw Error(`Zip index has too few entries, expected ${zipFileEntriesCount} but got ${zipIndex.length}.`);
+                }
+
+                resolve(validateIndex(zipIndex, filePath, wffVersion));
+            });
+            zip.on('entry', entry => {
+                if (entry.isFile && entry.name !== '@3dtilesIndex1@') {
+                    zipFileEntriesCount++;
+                    //console.log(`Validating index entry for ${entry.name}`);
+                    const hash = crypto.createHash('md5').update(entry.name).digest();
+                    const index = zipIndexFind(zipIndex, hash);
+                    if (index === -1) {
+                        throw Error(`${entry.name} - ${hash} not found in index.`);
+                    } else {
+                        const indexEntryOffset = zipIndex[index].offset;
+                        if (BigInt(entry.offset) !== BigInt(indexEntryOffset)) {
+                            //console.error(`Repairing ${entry.name} - ${hash} had incorrect offset ${indexEntryOffset}, expected ${entry.offset}`);
+                            zipIndex[index].offset = BigInt(entry.offset);
+                        }
+                    }
+                }
+            });
+        }
+    )
+    .catch(err => {
+        throw Error(`Zip index validation failed: ${err}`);
+    })
+    .finally(async () => {
+        let buf = Buffer.alloc(24)
+        //console.log(`zipIndex.length: ${zipIndex.length}`);
+        for (let i = 0; i < zipIndex.length; i++) {
+            const entry = zipIndex[i];
+            const [curHashHi, curHashLo] = md5AsUInt64(entry.md5hash);
+            buf.writeBigUInt64LE(curHashHi, 0);
+            buf.writeBigUInt64LE(curHashLo, 8);
+            buf.writeBigUInt64LE(entry.offset, 16);
+            await fsExtra.write(fd, buf, 0, 24, i * 24);
+        }
+        fsExtra.close(fd);
+        console.timeEnd('repairIndex');
+    });
+}
+
+async function getIndexReader(filePath, performIndexValidation, wffVersion)
+{
+    const index = await readIndex(filePath, undefined, '@3dtilesIndex1@', wffVersion);
     if (performIndexValidation) {
-        const indexIsValid = await validateIndex(index, filePath);
+        const indexIsValid = await validateIndex(index, filePath, wffVersion);
         if (!indexIsValid) {
             throw Error();
         }
@@ -444,6 +523,9 @@ async function getIndexReader(filePath, performIndexValidation)
             const fileContentsBuffer = Buffer.alloc(header.comp_size);
             //console.log(`Fetching data at offset ${fileDataOffset} size: ${header.comp_size}`);
             const data = await fsExtra.read(fd, fileContentsBuffer, 0, header.comp_size, fileDataOffset);
+            if (wffVersion > 1 && header.compression_method == ZIP_COMPRESSION_METHOD_DEFLATE) {
+                return zlib.inflateRawSync(data.buffer);
+            }
             return data.buffer;
         }
         throw Error(path);
