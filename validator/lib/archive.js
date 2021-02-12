@@ -18,6 +18,8 @@ const bufferToJson = require('./bufferToJson');
 const util = require('./utility');
 const defined = Cesium.defined;
 const zlib = require('zlib');
+const { ZSTDDecoder } = require('zstddec');
+const zstd = new ZSTDDecoder();
 
 module.exports = {
     readIndex: readIndex,
@@ -35,6 +37,7 @@ const ZIP_LOCAL_FILE_HEADER_STATIC_SIZE = 30;
 const ZIP_CENTRAL_DIRECTORY_STATIC_SIZE = 46;
 const ZIP_COMPRESSION_METHOD_STORE = 0;
 const ZIP_COMPRESSION_METHOD_DEFLATE = 8;
+const ZIP_COMPRESSION_METHOD_ZSTD = 93;
 
 function getLastCentralDirectoryEntry(fd, stat) {
     const bytesToRead = 320;
@@ -90,8 +93,10 @@ async function validateCentralDirectoryHeaderAndGetFileContents(fd, buffer, expe
             throw Error(`Zip must use STORE compression method, found compression method ${header.comp_method}`);
         }
     } else if (wffVersion > 1) {
-        if (header.comp_method !== ZIP_COMPRESSION_METHOD_STORE && header.comp_method !== ZIP_COMPRESSION_METHOD_DEFLATE) {
-            throw Error(`Zip must use STORE or DEFLATE compression method, found compression method ${header.comp_method}`);
+        if (header.comp_method !== ZIP_COMPRESSION_METHOD_STORE &&
+            header.comp_method !== ZIP_COMPRESSION_METHOD_DEFLATE &&
+            header.comp_method !== ZIP_COMPRESSION_METHOD_ZSTD) {
+            throw Error(`Zip must use STORE, DEFLATE or ZSTD compression method, found compression method ${header.comp_method}`);
         }
     }
     header.last_mod_time = buffer.readUInt16LE(12);
@@ -394,7 +399,7 @@ async function readIndex(inputFile, outputFile, indexFilename = '@3dtilesIndex1@
         .then(buffer => {
             return validateCentralDirectoryHeaderAndGetFileContents(fd, buffer, indexFilename, wffVersion);
         })
-        .then(buffer => {
+        .then(async buffer => {
             console.timeEnd('readIndexFromZip');
             const header = parseLocalFileHeaderAndValidateFilename(buffer, indexFilename);
 
@@ -407,8 +412,12 @@ async function readIndex(inputFile, outputFile, indexFilename = '@3dtilesIndex1@
                 throw Error(`Failed to get file data at offset ${dataStartOffset}`);
             }
 
-            if (wffVersion > 1 && header.compression_method === ZIP_COMPRESSION_METHOD_DEFLATE) {
-                indexFileDataBuffer = zlib.inflateRawSync(indexFileDataBuffer);
+            if (wffVersion > 1) {
+                if (header.compression_method === ZIP_COMPRESSION_METHOD_DEFLATE) {
+                    indexFileDataBuffer = zlib.inflateRawSync(indexFileDataBuffer);
+                } else if (header.compression_method === ZIP_COMPRESSION_METHOD_ZSTD) {
+                    indexFileDataBuffer = zstd.decode(indexFileDataBuffer, header.uncomp_size);
+                }
             }
 
             if (defined(outputFile)) {
@@ -504,6 +513,7 @@ async function repairIndexOffsets(filePath, outRepairedIndexPath, wffVersion)
 
 async function getIndexReader(filePath, performIndexValidation, wffVersion)
 {
+    await zstd.init();
     const index = await readIndex(filePath, undefined, '@3dtilesIndex1@', wffVersion);
     if (performIndexValidation) {
         const indexIsValid = await validateIndex(index, filePath, wffVersion);
@@ -519,12 +529,17 @@ async function getIndexReader(filePath, performIndexValidation, wffVersion)
         const match = await searchIndex(index, normalizedPath);
         if (match !== undefined) {
             const header = await readZipLocalFileHeader(fd, match.offset, path);
+            //console.log("Reading file: " + path + " wffversion: " + wffVersion);
             const fileDataOffset = Number(match.offset) + ZIP_LOCAL_FILE_HEADER_STATIC_SIZE + header.filename_size + header.extra_size;
             const fileContentsBuffer = Buffer.alloc(header.comp_size);
             //console.log(`Fetching data at offset ${fileDataOffset} size: ${header.comp_size}`);
             const data = await fsExtra.read(fd, fileContentsBuffer, 0, header.comp_size, fileDataOffset);
-            if (wffVersion > 1 && header.compression_method == ZIP_COMPRESSION_METHOD_DEFLATE) {
+            if (wffVersion > 1) {
+              if (header.compression_method == ZIP_COMPRESSION_METHOD_DEFLATE) {
                 return zlib.inflateRawSync(data.buffer);
+              } else if (header.compression_method === ZIP_COMPRESSION_METHOD_ZSTD) {
+                return Buffer.from(zstd.decode(data.buffer, header.uncomp_size));
+              }
             }
             return data.buffer;
         }
