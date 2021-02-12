@@ -21,9 +21,13 @@ function isTile(filePath, options) {
         const tileset = options.tileset;
         const extensionsUsed = defaultValue(tileset.extensionsUsed, EMPTY_ARRAY);
         const hasContentGltfExtension = extensionsUsed.indexOf('3DTILES_content_gltf') > -1;
+        const hasContentGeoJsonExtension = extensionsUsed.indexOf('MAXAR_content_geojson') > -1;
 
         // Version "2.0.0-alpha.0" was used during early development of 3D Tiles Next
         // and is included here for backwards compatibility purposes
+        if (extension === '.geojson') {
+            return hasContentGeoJsonExtension;
+        }
         if (version === '2.0.0-alpha.0' || hasContentGltfExtension) {
             return (
                 extension === '.gltf' ||

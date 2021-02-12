@@ -6,6 +6,7 @@ const validateI3dm = require('./validateI3dm');
 const validatePnts = require('./validatePnts');
 const validateGlb = require('../lib/validateGlb');
 const validateGltf = require('../lib/validateGltf');
+const validateGeojson = require('../lib/validateGeojson');
 
 module.exports = validateTile;
 
@@ -21,8 +22,11 @@ module.exports = validateTile;
  * @returns {Promise} A promise that resolves when the validation completes. If the validation fails, the promise will resolve to an error message.
  */
 async function validateTile(options) {
-    if (path.extname(options.filePath) === '.gltf') {
+    let fileExt = path.extname(options.filePath);
+    if (fileExt === '.gltf') {
         return await validateGltf(options);
+    } else if (fileExt === '.geojson') {
+        return await validateGeojson(options);
     }
     const content = options.content;
     if (content.length < 4) {
