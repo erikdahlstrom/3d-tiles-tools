@@ -31,16 +31,21 @@ async function validateGlb(options) {
         return `Invalid Glb version: ${version}. Version must be 2.`;
     }
 
+    //console.log(`validating ${filePath} in dir ${directory}`);
+
     try {
         const result = await validator.validateBytes(glb, {
             uri: filePath,
-            externalResourceFunction: (uri) =>
-                new Promise((resolve, reject) => {
-                    uri = path.resolve(directory, decodeURIComponent(uri));
+            externalResourceFunction: (uri) => {
+                //console.log(`externalResourceFunction: trying to resolve ${uri}`);
+                return new Promise((resolve, reject) => {
+                    uri = path.join(directory, decodeURIComponent(uri));
+                    //console.log(`externalResourceFunction promise: trying to resolve ${uri}`);
                     reader.readBinary(uri)
                         .then(data => resolve(data))
                         .catch(error => reject(error.toString()));
                 })
+            }
         });
 
         if (result.issues.numErrors > 0) {
