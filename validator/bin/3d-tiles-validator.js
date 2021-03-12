@@ -57,8 +57,8 @@ const argv = yargs
         wffVersion: {
             alias: 'wff',
             describe: 'Version of the WFF/3tz specification to verify against',
-            default: 1,
-            type: 'integer'
+            default: '1.1',
+            type: 'string'
         },
         repairIndexOffsets: {
             alias: 'rio',
