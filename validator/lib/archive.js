@@ -88,16 +88,12 @@ async function validateCentralDirectoryHeaderAndGetFileContents(fd, buffer, expe
     }
 
     header.comp_method = buffer.readUInt16LE(10);
-    if (wffVersion === 1) {
+    if (wffVersion === '1.0' || wffVersion === '1.1') {
         if (header.comp_method !== ZIP_COMPRESSION_METHOD_STORE) {
-            throw Error(`Zip must use STORE compression method, found compression method ${header.comp_method}`);
+            throw Error(`The zip index file must use the STORE compression method, found compression method ${header.comp_method}`);
         }
-    } else if (wffVersion > 1) {
-        if (header.comp_method !== ZIP_COMPRESSION_METHOD_STORE &&
-            header.comp_method !== ZIP_COMPRESSION_METHOD_DEFLATE &&
-            header.comp_method !== ZIP_COMPRESSION_METHOD_ZSTD) {
-            throw Error(`Zip must use STORE, DEFLATE or ZSTD compression method, found compression method ${header.comp_method}`);
-        }
+    } else {
+        throw Error(`Unsupported wff version ${wffVersion}`);
     }
     header.last_mod_time = buffer.readUInt16LE(12);
     header.last_mod_date = buffer.readUInt16LE(14);
@@ -383,7 +379,7 @@ async function searchIndex(zipIndex, searchPath) {
 }
 
 // if outputFile is not supplied, read index into memory
-async function readIndex(inputFile, outputFile, indexFilename = '@3dtilesIndex1@', wffVersion = 1) {
+async function readIndex(inputFile, outputFile, indexFilename = '@3dtilesIndex1@', wffVersion) {
     // console.log(`Read index from ${inputFile}`);
     console.time('readIndex');
     console.time('readIndexFromZip')
@@ -412,13 +408,13 @@ async function readIndex(inputFile, outputFile, indexFilename = '@3dtilesIndex1@
                 throw Error(`Failed to get file data at offset ${dataStartOffset}`);
             }
 
-            if (wffVersion > 1) {
-                if (header.compression_method === ZIP_COMPRESSION_METHOD_DEFLATE) {
-                    indexFileDataBuffer = zlib.inflateRawSync(indexFileDataBuffer);
-                } else if (header.compression_method === ZIP_COMPRESSION_METHOD_ZSTD) {
-                    indexFileDataBuffer = zstd.decode(indexFileDataBuffer, header.uncomp_size);
-                }
-            }
+            //if (wffVersion === '1.2') {
+            //    if (header.compression_method === ZIP_COMPRESSION_METHOD_DEFLATE) {
+            //        indexFileDataBuffer = zlib.inflateRawSync(indexFileDataBuffer);
+            //    } else if (header.compression_method === ZIP_COMPRESSION_METHOD_ZSTD) {
+            //        indexFileDataBuffer = zstd.decode(indexFileDataBuffer, header.uncomp_size);
+            //    }
+            //}
 
             if (defined(outputFile)) {
                 return fsExtra.writeFile(outputFile, indexFileDataBuffer);
@@ -513,6 +509,9 @@ async function repairIndexOffsets(filePath, outRepairedIndexPath, wffVersion)
 
 async function getIndexReader(filePath, performIndexValidation, wffVersion)
 {
+    if (wffVersion !== '1.0' && wffVersion !== '1.1') {
+        throw Error(`Unsupported wff version ${wffVersion}`);
+    }
     await zstd.init();
     const index = await readIndex(filePath, undefined, '@3dtilesIndex1@', wffVersion);
     if (performIndexValidation) {
@@ -534,7 +533,7 @@ async function getIndexReader(filePath, performIndexValidation, wffVersion)
             const fileContentsBuffer = Buffer.alloc(header.comp_size);
             //console.log(`Fetching data at offset ${fileDataOffset} size: ${header.comp_size}`);
             const data = await fsExtra.read(fd, fileContentsBuffer, 0, header.comp_size, fileDataOffset);
-            if (wffVersion > 1) {
+            if (wffVersion === '1.1') {
               if (header.compression_method == ZIP_COMPRESSION_METHOD_DEFLATE) {
                 return zlib.inflateRawSync(data.buffer);
               } else if (header.compression_method === ZIP_COMPRESSION_METHOD_ZSTD) {
